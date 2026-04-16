@@ -70,7 +70,34 @@ fn create_fallback_icon() -> Icon {
     Icon::from_rgba(rgba, size, size).expect("Failed to create fallback icon")
 }
 
+fn ensure_single_instance() {
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONINFORMATION};
+
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+
+    // Mutex name as wide string: "StealthMon_SingleInstance\0"
+    let name: Vec<u16> = "StealthMon_SingleInstance\0"
+        .encode_utf16()
+        .collect();
+
+    unsafe {
+        let _handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            let title: Vec<u16> = "StealthMon\0".encode_utf16().collect();
+            let msg: Vec<u16> = "An instance of StealthMon is already running.\0"
+                .encode_utf16()
+                .collect();
+            MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+            std::process::exit(0);
+        }
+    }
+}
+
 fn main() {
+    ensure_single_instance();
+
     let data_dir = get_data_dir();
     setup_logging(&data_dir);
 
@@ -179,7 +206,6 @@ fn main() {
 
     // Main thread MUST run the Windows message loop, otherwise the tray icon freezes
     unsafe {
-        use windows_sys::Win32::Foundation::HWND;
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             DispatchMessageW, GetMessageW, TranslateMessage, MSG,
         };

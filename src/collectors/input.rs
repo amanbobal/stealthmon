@@ -16,6 +16,7 @@ pub enum InputEvent {
     RightClick,
     MiddleClick,
     MouseMove { x: f64, y: f64 },
+    ControllerButton,
 }
 
 /// Running counters for the current hour bucket.
@@ -24,6 +25,7 @@ struct HourlyCounters {
     left_clicks: AtomicI64,
     right_clicks: AtomicI64,
     middle_clicks: AtomicI64,
+    controller_buttons: AtomicI64,
 }
 
 impl HourlyCounters {
@@ -33,15 +35,17 @@ impl HourlyCounters {
             left_clicks: AtomicI64::new(0),
             right_clicks: AtomicI64::new(0),
             middle_clicks: AtomicI64::new(0),
+            controller_buttons: AtomicI64::new(0),
         }
     }
 
-    fn reset(&self) -> (i64, i64, i64, i64) {
+    fn reset(&self) -> (i64, i64, i64, i64, i64) {
         let kp = self.keypresses.swap(0, Ordering::Relaxed);
         let lc = self.left_clicks.swap(0, Ordering::Relaxed);
         let rc = self.right_clicks.swap(0, Ordering::Relaxed);
         let mc = self.middle_clicks.swap(0, Ordering::Relaxed);
-        (kp, lc, rc, mc)
+        let cb = self.controller_buttons.swap(0, Ordering::Relaxed);
+        (kp, lc, rc, mc, cb)
     }
 }
 
@@ -51,6 +55,7 @@ pub fn start_input_collector() -> mpsc::UnboundedReceiver<InputEvent> {
     let (tx, rx) = mpsc::unbounded_channel::<InputEvent>();
 
     // Spawn the blocking rdev listener in a standard thread
+    let tx_rdev = tx.clone();
     std::thread::Builder::new()
         .name("rdev-listener".into())
         .spawn(move || {
@@ -65,7 +70,7 @@ pub fn start_input_collector() -> mpsc::UnboundedReceiver<InputEvent> {
                     _ => None,
                 };
                 if let Some(evt) = input_event {
-                    let _ = tx.send(evt);
+                    let _ = tx_rdev.send(evt);
                 }
             }) {
                 tracing::error!(
@@ -76,6 +81,37 @@ pub fn start_input_collector() -> mpsc::UnboundedReceiver<InputEvent> {
             }
         })
         .expect("Failed to spawn rdev listener thread");
+
+    // Spawn a gamepad polling thread using gilrs (xinput backend)
+    std::thread::Builder::new()
+        .name("gamepad-listener".into())
+        .spawn(move || {
+            tracing::info!("Starting gamepad input listener");
+            match gilrs::Gilrs::new() {
+                Ok(mut gilrs) => {
+                    for (_id, gamepad) in gilrs.gamepads() {
+                        tracing::info!("Gamepad connected: {}", gamepad.name());
+                    }
+                    loop {
+                        while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
+                            if matches!(event, gilrs::EventType::ButtonPressed(_, _)) {
+                                let _ = tx.send(InputEvent::ControllerButton);
+                            }
+                        }
+                        // Poll at ~60Hz to avoid busy-spinning
+                        std::thread::sleep(std::time::Duration::from_millis(16));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to initialize gamepad input (gilrs): {:?}. \
+                         Controller tracking disabled.",
+                        e
+                    );
+                }
+            }
+        })
+        .expect("Failed to spawn gamepad listener thread");
 
     rx
 }
@@ -187,6 +223,10 @@ pub async fn process_input_events(
                         counters.middle_clicks.fetch_add(1, Ordering::Relaxed);
                         let _ = db.insert_input_event("middle_click").await;
                     }
+                    Some(InputEvent::ControllerButton) => {
+                        counters.controller_buttons.fetch_add(1, Ordering::Relaxed);
+                        let _ = db.insert_input_event("controller_button").await;
+                    }
                     Some(InputEvent::MouseMove { x, y }) => {
                         let mut acc = mouse_acc.lock().unwrap();
                         if let Some((lx, ly)) = acc.1 {
@@ -208,7 +248,7 @@ pub async fn process_input_events(
 }
 
 async fn flush_counters(db: &Database, counters: &HourlyCounters, bucket: &str) {
-    let (kp, lc, rc, mc) = counters.reset();
+    let (kp, lc, rc, mc, cb) = counters.reset();
     if kp > 0 {
         let _ = db
             .upsert_hourly_stats(bucket, "keypresses", kp as f64)
@@ -227,6 +267,11 @@ async fn flush_counters(db: &Database, counters: &HourlyCounters, bucket: &str) 
     if mc > 0 {
         let _ = db
             .upsert_hourly_stats(bucket, "middle_clicks", mc as f64)
+            .await;
+    }
+    if cb > 0 {
+        let _ = db
+            .upsert_hourly_stats(bucket, "controller_buttons", cb as f64)
             .await;
     }
 }

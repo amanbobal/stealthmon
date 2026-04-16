@@ -12,11 +12,11 @@ const PRIVATE_APPS: &[&str] = &[
     "wallet",
 ];
 
-/// Categorise an app by its process name.
-pub fn categorise(app: &str) -> &'static str {
+/// Categorise an app by its process name and optional process path.
+pub fn categorise(app: &str, process_path: Option<&str>) -> &'static str {
     let a = app.to_lowercase();
 
-    if ["code", "zed", "cursor", "neovide", "nvim", "vim", "clion",
+    if ["code", "antigravity", "zed", "cursor", "neovide", "nvim", "vim", "clion",
         "intellij", "rider", "fleet", "sublime_text", "notepad++"]
         .iter()
         .any(|k| a.contains(k))
@@ -45,7 +45,7 @@ pub fn categorise(app: &str) -> &'static str {
     {
         return "communication";
     }
-    if ["mpv", "vlc", "mpc-hc", "netflix", "spotify", "youtube music",
+    if ["mpv", "vlc", "mpc-hc", "netflix", "spotify", "youtube",
         "crunchyroll"]
         .iter()
         .any(|k| a.contains(k))
@@ -65,6 +65,14 @@ pub fn categorise(app: &str) -> &'static str {
         .any(|k| a.contains(k))
     {
         return "productivity";
+    }
+
+    // Auto-categorize apps running from E: drive as gaming
+    if let Some(path) = process_path {
+        let p = path.to_lowercase();
+        if p.starts_with("e:\\") || p.starts_with("e:/") {
+            return "gaming";
+        }
     }
 
     "other"
@@ -97,6 +105,9 @@ pub async fn start_window_collector(db: Database, cancel: CancellationToken) {
                     Ok(Ok(window)) => {
                         let raw_app = window.app_name;
                         let raw_title = window.title;
+                        let process_path = window.process_path
+                            .to_string_lossy()
+                            .to_string();
 
                         let (app_name, window_title) = if is_private(&raw_app) {
                             ("private".to_string(), None)
@@ -104,7 +115,7 @@ pub async fn start_window_collector(db: Database, cancel: CancellationToken) {
                             (raw_app, Some(raw_title))
                         };
 
-                        let category = categorise(&app_name);
+                        let category = categorise(&app_name, Some(&process_path));
                         let date_bucket = Utc::now().format("%Y-%m-%d").to_string();
 
                         // Insert snapshot

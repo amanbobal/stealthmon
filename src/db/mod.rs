@@ -19,6 +19,7 @@ pub struct HourlyStat {
     pub right_clicks: i64,
     pub middle_clicks: i64,
     pub mouse_feet: f64,
+    pub controller_buttons: i64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -29,6 +30,7 @@ pub struct DailyAvgStat {
     pub middle_clicks: f64,
     pub keypresses: f64,
     pub mouse_feet: f64,
+    pub controller_buttons: f64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -46,6 +48,7 @@ pub struct Totals {
     pub right_clicks: i64,
     pub middle_clicks: i64,
     pub mouse_feet: f64,
+    pub controller_buttons: i64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -56,6 +59,7 @@ pub struct TimelinePoint {
     pub right_clicks: i64,
     pub middle_clicks: i64,
     pub mouse_feet: f64,
+    pub controller_buttons: i64,
 }
 
 impl Database {
@@ -97,7 +101,8 @@ impl Database {
                     left_clicks   INTEGER DEFAULT 0,
                     right_clicks  INTEGER DEFAULT 0,
                     middle_clicks INTEGER DEFAULT 0,
-                    mouse_feet    REAL    DEFAULT 0.0
+                    mouse_feet    REAL    DEFAULT 0.0,
+                    controller_buttons INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS daily_app_time (
@@ -116,6 +121,13 @@ impl Database {
                 CREATE INDEX IF NOT EXISTS idx_daily_app_time_date ON daily_app_time(date_bucket);
                 ",
             )?;
+
+            // Migration: add controller_buttons column if it doesn't exist (for existing DBs)
+            let _ = conn.execute(
+                "ALTER TABLE hourly_stats ADD COLUMN controller_buttons INTEGER DEFAULT 0",
+                [],
+            ); // Ignore error if column already exists
+
             Ok(())
         })
         .await?;
@@ -242,7 +254,7 @@ impl Database {
                 let cutoff = Utc::now() - chrono::Duration::hours(hours_back as i64);
                 let cutoff_str = cutoff.format("%Y-%m-%dT%H:00").to_string();
                 let mut stmt = conn.prepare(
-                    "SELECT hour_bucket, keypresses, left_clicks, right_clicks, middle_clicks, mouse_feet
+                    "SELECT hour_bucket, keypresses, left_clicks, right_clicks, middle_clicks, mouse_feet, controller_buttons
                      FROM hourly_stats
                      WHERE hour_bucket >= ?1
                      ORDER BY hour_bucket ASC",
@@ -256,6 +268,7 @@ impl Database {
                             right_clicks: row.get(3)?,
                             middle_clicks: row.get(4)?,
                             mouse_feet: row.get(5)?,
+                            controller_buttons: row.get(6)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
@@ -278,7 +291,8 @@ impl Database {
                        SUM(left_clicks) as lc,
                        SUM(right_clicks) as rc,
                        SUM(middle_clicks) as mc,
-                       SUM(mouse_feet) as mf
+                       SUM(mouse_feet) as mf,
+                       SUM(controller_buttons) as cb
                      FROM hourly_stats
                      GROUP BY day_date
                      ORDER BY day_date",
@@ -292,6 +306,7 @@ impl Database {
                     rc: i64,
                     mc: i64,
                     mf: f64,
+                    cb: i64,
                 }
 
                 let rows: Vec<DayData> = stmt
@@ -303,14 +318,15 @@ impl Database {
                             rc: row.get(3)?,
                             mc: row.get(4)?,
                             mf: row.get(5)?,
+                            cb: row.get(6)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
 
                 // Group by weekday (0=Sun, 6=Sat)
                 let day_names = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-                let mut sums: [(f64, f64, f64, f64, f64, f64); 7] =
-                    [(0.0, 0.0, 0.0, 0.0, 0.0, 0.0); 7];
+                let mut sums: [(f64, f64, f64, f64, f64, f64, f64); 7] =
+                    [(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0); 7];
 
                 for d in &rows {
                     if let Ok(nd) = NaiveDateTime::parse_from_str(
@@ -324,6 +340,7 @@ impl Database {
                         sums[weekday].3 += d.mc as f64;
                         sums[weekday].4 += d.kp as f64;
                         sums[weekday].5 += d.mf;
+                        sums[weekday].6 += d.cb as f64;
                     }
                 }
 
@@ -337,6 +354,7 @@ impl Database {
                             middle_clicks: (sums[i].3 / count).round(),
                             keypresses: (sums[i].4 / count).round(),
                             mouse_feet: ((sums[i].5 / count) * 100.0).round() / 100.0,
+                            controller_buttons: (sums[i].6 / count).round(),
                         }
                     })
                     .collect();
@@ -404,7 +422,8 @@ impl Database {
                        COALESCE(SUM(left_clicks), 0),
                        COALESCE(SUM(right_clicks), 0),
                        COALESCE(SUM(middle_clicks), 0),
-                       COALESCE(SUM(mouse_feet), 0.0)
+                       COALESCE(SUM(mouse_feet), 0.0),
+                       COALESCE(SUM(controller_buttons), 0)
                      FROM hourly_stats",
                 )?;
                 let totals = stmt.query_row([], |row| {
@@ -414,6 +433,7 @@ impl Database {
                         right_clicks: row.get(2)?,
                         middle_clicks: row.get(3)?,
                         mouse_feet: row.get(4)?,
+                        controller_buttons: row.get(5)?,
                     })
                 })?;
                 Ok(totals)
@@ -431,7 +451,7 @@ impl Database {
                 let cutoff_str = cutoff.format("%Y-%m-%dT%H:00").to_string();
                 let mut stmt = conn.prepare(
                     "SELECT hour_bucket, keypresses, left_clicks, right_clicks,
-                            middle_clicks, mouse_feet
+                            middle_clicks, mouse_feet, controller_buttons
                      FROM hourly_stats
                      WHERE hour_bucket >= ?1
                      ORDER BY hour_bucket ASC",
@@ -445,6 +465,7 @@ impl Database {
                             right_clicks: row.get(3)?,
                             middle_clicks: row.get(4)?,
                             mouse_feet: row.get(5)?,
+                            controller_buttons: row.get(6)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;

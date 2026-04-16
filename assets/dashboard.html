@@ -73,7 +73,7 @@
   /* Stat cards */
   .stats-row {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 16px;
     margin-bottom: 36px;
   }
@@ -249,6 +249,10 @@
       <div class="value" id="statKeypresses">—</div>
     </div>
     <div class="stat-card">
+      <div class="label">Controller</div>
+      <div class="value" id="statControllerButtons">—</div>
+    </div>
+    <div class="stat-card">
       <div class="label">Mouse Movement</div>
       <div class="value" id="statMouseMovement">—<span class="unit">feet</span></div>
     </div>
@@ -273,11 +277,12 @@
           <th>RIGHT CLICKS</th>
           <th>MIDDLE CLICKS</th>
           <th>KEYPRESSES</th>
+          <th>CONTROLLER</th>
           <th>MOUSE MOVEMENT</th>
         </tr>
       </thead>
       <tbody id="dailyTableBody">
-        <tr><td colspan="6" class="loading">loading data...</td></tr>
+        <tr><td colspan="7" class="loading">loading data...</td></tr>
       </tbody>
     </table>
   </div>
@@ -383,21 +388,16 @@ function renderDonut(data) {
 function renderRadar(data) {
   const ctx = document.getElementById('radarChart').getContext('2d');
 
-  // Aggregate by category, also detect "youtube" in app names
+  // Aggregate by category
   const catMap = {};
-  const categories = ['coding', 'gaming', 'browser', 'communication', 'media', 'creative', 'productivity', 'other', 'youtube'];
+  const categories = ['coding', 'gaming', 'browser', 'communication', 'media', 'creative', 'productivity', 'other'];
   categories.forEach(c => catMap[c] = 0);
 
   const totalSecs = data.reduce((s, d) => s + d.seconds, 0) || 1;
 
   data.forEach(d => {
-    // YouTube detection — override category
-    if (d.app_name.toLowerCase().includes('youtube')) {
-      catMap['youtube'] = (catMap['youtube'] || 0) + d.seconds;
-    } else {
-      const cat = categories.includes(d.category) ? d.category : 'other';
-      catMap[cat] = (catMap[cat] || 0) + d.seconds;
-    }
+    const cat = categories.includes(d.category) ? d.category : 'other';
+    catMap[cat] = (catMap[cat] || 0) + d.seconds;
   });
 
   const labels = categories.map(c => `${c} (${Math.round(catMap[c] / totalSecs * 100)}%)`);
@@ -451,14 +451,13 @@ function renderRadar(data) {
 function renderTimeline(data) {
   const ctx = document.getElementById('timelineChart').getContext('2d');
 
+  // Convert UTC hour_bucket to local time using the browser's timezone
   const labels = data.map(d => {
-    // Parse "2024-01-15T14:00" → "02:00 PM"
     try {
-      const parts = d.hour_bucket.split('T');
-      const hour = parseInt(parts[1].split(':')[0]);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const h12 = hour % 12 || 12;
-      return `${h12.toString().padStart(2, '0')}:00 ${ampm}`;
+      // hour_bucket is like "2026-04-16T14:00" (UTC)
+      // Append ":00Z" to make it a valid ISO 8601 UTC timestamp
+      const utcDate = new Date(d.hour_bucket + ":00Z");
+      return utcDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     } catch {
       return d.hour_bucket;
     }
@@ -520,6 +519,16 @@ function renderTimeline(data) {
           pointRadius: 1.5,
           pointHoverRadius: 4,
         },
+        {
+          label: 'Controller',
+          data: data.map(d => d.controller_buttons),
+          borderColor: '#ff44aa',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
       ]
     },
     options: {
@@ -570,6 +579,7 @@ function renderStats(totals) {
   document.getElementById('statRightClicks').textContent = abbrev(totals.right_clicks);
   document.getElementById('statMiddleClicks').textContent = abbrev(totals.middle_clicks);
   document.getElementById('statKeypresses').textContent = abbrev(totals.keypresses);
+  document.getElementById('statControllerButtons').textContent = abbrev(totals.controller_buttons);
 
   const mf = totals.mouse_feet || 0;
   document.getElementById('statMouseMovement').innerHTML = `${abbrev(mf)}<span class="unit">feet</span>`;
@@ -579,7 +589,7 @@ function renderStats(totals) {
 function renderDailyAvg(data) {
   const tbody = document.getElementById('dailyTableBody');
   if (!data || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#00cc6688;padding:20px;">no data yet — keep monitoring!</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#00cc6688;padding:20px;">no data yet — keep monitoring!</td></tr>';
     return;
   }
 
@@ -590,6 +600,7 @@ function renderDailyAvg(data) {
       <td>${Math.round(row.right_clicks).toLocaleString()}</td>
       <td>${Math.round(row.middle_clicks).toLocaleString()}</td>
       <td>${Math.round(row.keypresses).toLocaleString()}</td>
+      <td>${Math.round(row.controller_buttons).toLocaleString()}</td>
       <td>${Math.round(row.mouse_feet).toLocaleString()} feet</td>
     </tr>
   `).join('');
