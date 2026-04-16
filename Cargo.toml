@@ -1,0 +1,38 @@
+[package]
+name = "stealthmon"
+version = "0.1.0"
+edition = "2021"
+description = "A silent background activity monitor for Windows with a web dashboard"
+
+[dependencies]
+tokio          = { version = "1", features = ["full"] }
+rdev           = "0.5"
+active-win-pos-rs = "0.8"
+sysinfo        = "0.30"
+rusqlite       = { version = "0.31", features = ["bundled"] }
+axum           = "0.7"
+tower-http     = { version = "0.5", features = ["cors"] }
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+chrono         = { version = "0.4", features = ["serde"] }
+tokio-rusqlite = "0.5"
+tray-icon      = "0.14"
+rust-embed     = "8"
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tokio-util     = { version = "0.7", features = ["rt"] }
+open           = "5"
+image          = "0.25"
+windows-sys = { version = "0.52.0", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
+[build-dependencies]
+winres = "0.1"
+
+[[bin]]
+name = "stealthmon"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

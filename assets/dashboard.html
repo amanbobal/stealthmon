@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StealthMon — Activity Dashboard</title>
+<meta name="description" content="Personal activity monitoring dashboard — keypresses, clicks, mouse movement, and app usage.">
+<script src="/assets/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d0d0d;
+    color: #00ff88;
+    font-family: "Courier New", Courier, monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: #00ff8833; color: #fff; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0d0d0d; }
+  ::-webkit-scrollbar-thumb { background: #1a2e1a; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #00cc66; }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 30px 24px;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 36px;
+  }
+
+  .header h1 {
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: #00ff88;
+    letter-spacing: 2px;
+  }
+
+  .last-updated {
+    font-size: 0.75rem;
+    color: #00cc66;
+    opacity: 0.7;
+  }
+
+  /* Charts row */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-bottom: 36px;
+  }
+
+  .chart-card {
+    background: rgba(26, 46, 26, 0.15);
+    border: 1px solid #1a2e1a;
+    border-radius: 6px;
+    padding: 20px;
+    position: relative;
+  }
+
+  .chart-card canvas {
+    width: 100% !important;
+    max-height: 340px;
+  }
+
+  /* Stat cards */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .stat-card {
+    background: rgba(26, 46, 26, 0.12);
+    border: 1px solid #1a2e1a;
+    border-radius: 6px;
+    padding: 18px 16px;
+    text-align: center;
+  }
+
+  .stat-card .label {
+    font-size: 0.75rem;
+    color: #00cc66;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .stat-card .value {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #00ff88;
+    line-height: 1;
+  }
+
+  .stat-card .unit {
+    font-size: 0.85rem;
+    color: #00cc66;
+    font-weight: 400;
+  }
+
+  /* Timeline chart */
+  .timeline-section {
+    margin-bottom: 36px;
+  }
+
+  .timeline-section h2 {
+    font-size: 1rem;
+    font-weight: 400;
+    color: #00cc66;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .timeline-card {
+    background: rgba(26, 46, 26, 0.12);
+    border: 1px solid #1a2e1a;
+    border-radius: 6px;
+    padding: 20px;
+  }
+
+  .timeline-card canvas {
+    width: 100% !important;
+    max-height: 300px;
+  }
+
+  /* Daily average table */
+  .daily-section h2 {
+    font-size: 1rem;
+    font-weight: 400;
+    color: #00cc66;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .daily-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "Courier New", Courier, monospace;
+  }
+
+  .daily-table th {
+    text-align: right;
+    font-size: 0.7rem;
+    color: #00cc66;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #1a2e1a;
+    font-weight: 600;
+  }
+
+  .daily-table th:first-child {
+    text-align: left;
+    width: 60px;
+  }
+
+  .daily-table td {
+    text-align: right;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    color: #00ff88;
+    border-bottom: 1px solid #1a2e1a0a;
+  }
+
+  .daily-table td:first-child {
+    text-align: left;
+    font-weight: 700;
+    color: #00cc66;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+  }
+
+  .daily-table tr:nth-child(even) {
+    background: #111811;
+  }
+
+  .daily-table tr:nth-child(odd) {
+    background: #0d0d0d;
+  }
+
+  /* Loading state */
+  .loading {
+    text-align: center;
+    padding: 60px;
+    color: #00cc66;
+    font-size: 0.9rem;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .charts-row { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (max-width: 600px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>my activity</h1>
+    <span class="last-updated" id="lastUpdated">loading...</span>
+  </div>
+
+  <!-- Charts Row: Donut + Radar -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <canvas id="donutChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <canvas id="radarChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Stat Cards -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card">
+      <div class="label">Left Clicks</div>
+      <div class="value" id="statLeftClicks">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Right Clicks</div>
+      <div class="value" id="statRightClicks">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Middle Clicks</div>
+      <div class="value" id="statMiddleClicks">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Keypresses</div>
+      <div class="value" id="statKeypresses">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Mouse Movement</div>
+      <div class="value" id="statMouseMovement">—<span class="unit">feet</span></div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-section">
+    <h2>past 24 hours</h2>
+    <div class="timeline-card">
+      <canvas id="timelineChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Daily Average Table -->
+  <div class="daily-section">
+    <h2>avg daily activity</h2>
+    <table class="daily-table" id="dailyTable">
+      <thead>
+        <tr>
+          <th></th>
+          <th>LEFT CLICKS</th>
+          <th>RIGHT CLICKS</th>
+          <th>MIDDLE CLICKS</th>
+          <th>KEYPRESSES</th>
+          <th>MOUSE MOVEMENT</th>
+        </tr>
+      </thead>
+      <tbody id="dailyTableBody">
+        <tr><td colspan="6" class="loading">loading data...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ─── Helper: abbreviate numbers ──────────────────
+function abbrev(n) {
+  if (n == null) return '—';
+  const num = Number(n);
+  if (isNaN(num)) return '—';
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'm';
+  if (num >= 1_000) return (num / 1_000).toFixed(num >= 10_000 ? 0 : 1) + 'k';
+  return Math.round(num).toLocaleString();
+}
+
+// ─── Chart.js global defaults ────────────────────
+Chart.defaults.color = '#00cc66';
+Chart.defaults.borderColor = '#1a2e1a';
+Chart.defaults.font.family = '"Courier New", Courier, monospace';
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.tooltip.backgroundColor = '#1a2e1a';
+Chart.defaults.plugins.tooltip.titleColor = '#00ff88';
+Chart.defaults.plugins.tooltip.bodyColor = '#00ff88';
+Chart.defaults.plugins.tooltip.borderColor = '#00cc66';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+Chart.defaults.plugins.tooltip.cornerRadius = 4;
+
+// ─── Green palette for charts ────────────────────
+const greenPalette = [
+  '#00ff88', '#00cc66', '#009944', '#00e070',
+  '#33ffaa', '#66ffcc', '#00884d', '#22dd77',
+  '#00bb55', '#44ffbb'
+];
+
+let donutChart, radarChart, timelineChart;
+
+// ─── Donut Chart ─────────────────────────────────
+function renderDonut(data) {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+
+  // Take top 8, group rest as "other"
+  let sorted = [...data].sort((a, b) => b.seconds - a.seconds);
+  let top8 = sorted.slice(0, 8);
+  let rest = sorted.slice(8);
+  if (rest.length > 0) {
+    const otherPct = rest.reduce((s, d) => s + d.percentage, 0);
+    top8.push({ app_name: 'other', percentage: Math.round(otherPct * 100) / 100 });
+  }
+
+  const labels = top8.map(d => d.app_name);
+  const values = top8.map(d => d.percentage);
+  const colors = top8.map((_, i) => greenPalette[i % greenPalette.length]);
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderColor: '#0d0d0d',
+        borderWidth: 2,
+        hoverBorderColor: '#00ff88',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '55%',
+      plugins: {
+        legend: {
+          position: 'left',
+          labels: {
+            color: '#00cc66',
+            padding: 10,
+            font: { size: 11, family: '"Courier New", monospace' },
+            generateLabels: function(chart) {
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => ({
+                text: `${label} (${ds.data[i]}%)`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: '#0d0d0d',
+                lineWidth: 1,
+                index: i,
+                hidden: false,
+              }));
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.label}: ${ctx.parsed}%`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── Radar Chart ─────────────────────────────────
+function renderRadar(data) {
+  const ctx = document.getElementById('radarChart').getContext('2d');
+
+  // Aggregate by category, also detect "youtube" in app names
+  const catMap = {};
+  const categories = ['coding', 'gaming', 'browser', 'communication', 'media', 'creative', 'productivity', 'other', 'youtube'];
+  categories.forEach(c => catMap[c] = 0);
+
+  const totalSecs = data.reduce((s, d) => s + d.seconds, 0) || 1;
+
+  data.forEach(d => {
+    // YouTube detection — override category
+    if (d.app_name.toLowerCase().includes('youtube')) {
+      catMap['youtube'] = (catMap['youtube'] || 0) + d.seconds;
+    } else {
+      const cat = categories.includes(d.category) ? d.category : 'other';
+      catMap[cat] = (catMap[cat] || 0) + d.seconds;
+    }
+  });
+
+  const labels = categories.map(c => `${c} (${Math.round(catMap[c] / totalSecs * 100)}%)`);
+  const values = categories.map(c => Math.round(catMap[c] / totalSecs * 100));
+
+  if (radarChart) radarChart.destroy();
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: 'rgba(0, 255, 136, 0.08)',
+        borderColor: '#00ff88',
+        borderWidth: 1.5,
+        pointBackgroundColor: '#00ff88',
+        pointBorderColor: '#00ff88',
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (ctx) => `${ctx.parsed.r}%` }
+        }
+      },
+      scales: {
+        r: {
+          beginAtZero: true,
+          angleLines: { color: '#1a2e1a' },
+          grid: { color: '#1a2e1a' },
+          pointLabels: {
+            color: '#00cc66',
+            font: { size: 10, family: '"Courier New", monospace' }
+          },
+          ticks: {
+            display: false,
+            stepSize: 10,
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── Timeline Chart (past 24h) ───────────────────
+function renderTimeline(data) {
+  const ctx = document.getElementById('timelineChart').getContext('2d');
+
+  const labels = data.map(d => {
+    // Parse "2024-01-15T14:00" → "02:00 PM"
+    try {
+      const parts = d.hour_bucket.split('T');
+      const hour = parseInt(parts[1].split(':')[0]);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const h12 = hour % 12 || 12;
+      return `${h12.toString().padStart(2, '0')}:00 ${ampm}`;
+    } catch {
+      return d.hour_bucket;
+    }
+  });
+
+  if (timelineChart) timelineChart.destroy();
+  timelineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Keypresses',
+          data: data.map(d => d.keypresses),
+          borderColor: '#4488ff',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
+        {
+          label: 'Mouse Movement',
+          data: data.map(d => Math.round(d.mouse_feet)),
+          borderColor: '#aaff44',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
+        {
+          label: 'Middle Clicks',
+          data: data.map(d => d.middle_clicks),
+          borderColor: '#ff8844',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
+        {
+          label: 'Right Clicks',
+          data: data.map(d => d.right_clicks),
+          borderColor: '#aa66ff',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
+        {
+          label: 'Left Clicks',
+          data: data.map(d => d.left_clicks),
+          borderColor: '#00ff88',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: '#00cc66',
+            padding: 16,
+            usePointStyle: true,
+            pointStyle: 'rectRounded',
+            font: { size: 11, family: '"Courier New", monospace' }
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: '#1a2e1a44' },
+          ticks: {
+            color: '#00cc66',
+            maxRotation: 45,
+            font: { size: 10, family: '"Courier New", monospace' }
+          }
+        },
+        y: {
+          grid: { color: '#1a2e1a44' },
+          ticks: {
+            color: '#00cc66',
+            font: { size: 10, family: '"Courier New", monospace' },
+            callback: (v) => abbrev(v)
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── Stat Cards ──────────────────────────────────
+function renderStats(totals) {
+  document.getElementById('statLeftClicks').textContent = abbrev(totals.left_clicks);
+  document.getElementById('statRightClicks').textContent = abbrev(totals.right_clicks);
+  document.getElementById('statMiddleClicks').textContent = abbrev(totals.middle_clicks);
+  document.getElementById('statKeypresses').textContent = abbrev(totals.keypresses);
+
+  const mf = totals.mouse_feet || 0;
+  document.getElementById('statMouseMovement').innerHTML = `${abbrev(mf)}<span class="unit">feet</span>`;
+}
+
+// ─── Daily Average Table ─────────────────────────
+function renderDailyAvg(data) {
+  const tbody = document.getElementById('dailyTableBody');
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#00cc6688;padding:20px;">no data yet — keep monitoring!</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(row => `
+    <tr>
+      <td>${row.day}</td>
+      <td>${Math.round(row.left_clicks).toLocaleString()}</td>
+      <td>${Math.round(row.right_clicks).toLocaleString()}</td>
+      <td>${Math.round(row.middle_clicks).toLocaleString()}</td>
+      <td>${Math.round(row.keypresses).toLocaleString()}</td>
+      <td>${Math.round(row.mouse_feet).toLocaleString()} feet</td>
+    </tr>
+  `).join('');
+}
+
+// ─── Data Fetching ───────────────────────────────
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    console.error(`Failed to fetch ${url}:`, e);
+    return null;
+  }
+}
+
+async function loadAllData() {
+  const [totals, timeline, appDist, dailyAvg] = await Promise.all([
+    fetchJSON('/api/totals'),
+    fetchJSON('/api/timeline'),
+    fetchJSON('/api/app-distribution'),
+    fetchJSON('/api/daily-avg'),
+  ]);
+
+  if (totals) renderStats(totals);
+  if (appDist && appDist.length > 0) {
+    renderDonut(appDist);
+    renderRadar(appDist);
+  }
+  if (timeline) renderTimeline(timeline);
+  if (dailyAvg) renderDailyAvg(dailyAvg);
+
+  // Update timestamp
+  const now = new Date();
+  document.getElementById('lastUpdated').textContent =
+    `last updated: ${now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+}
+
+// ─── Init + Auto-refresh ─────────────────────────
+loadAllData();
+setInterval(loadAllData, 60_000);
+</script>
+</body>
+</html>
