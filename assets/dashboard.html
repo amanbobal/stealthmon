@@ -1,599 +1,789 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StealthMon — Activity Dashboard</title>
-<meta name="description" content="Personal activity monitoring dashboard — keypresses, clicks, mouse movement, and app usage.">
-<script src="/assets/chart.umd.min.js"></script>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StealthMon — Activity Dashboard</title>
+    <meta
+      name="description"
+      content="Personal activity monitoring dashboard — keypresses, clicks, mouse movement, and app usage."
+    />
+    <script src="/assets/chart.umd.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-  body {
-    background: #0d0d0d;
-    color: #00ff88;
-    font-family: "Courier New", Courier, monospace;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
+      body {
+        background: radial-gradient(
+          circle at top,
+          #0d1722 0%,
+          #081016 60%,
+          #04070b 100%
+        );
+        color: #c7e7ff;
+        font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
 
-  ::selection { background: #00ff8833; color: #fff; }
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #0d0d0d; }
-  ::-webkit-scrollbar-thumb { background: #1a2e1a; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #00cc66; }
+      ::selection {
+        background: rgba(109, 213, 255, 0.25);
+        color: #f8fcff;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #081016;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(88, 150, 210, 0.38);
+        border-radius: 99px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(109, 213, 255, 0.45);
+      }
 
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 30px 24px;
-  }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 30px 24px;
+      }
 
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 36px;
-  }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
 
-  .header h1 {
-    font-size: 1.8rem;
-    font-weight: 400;
-    color: #00ff88;
-    letter-spacing: 2px;
-  }
+      .header h1 {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #d7ebff;
+        letter-spacing: 1px;
+        text-transform: capitalize;
+      }
 
-  .last-updated {
-    font-size: 0.75rem;
-    color: #00cc66;
-    opacity: 0.7;
-  }
+      .header p {
+        margin-top: 8px;
+        color: #d7ebff;
+        opacity: 0.92;
+        font-size: 1rem;
+        max-width: 560px;
+        line-height: 1.55;
+      }
 
-  /* Charts row */
-  .charts-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-    margin-bottom: 36px;
-  }
+      .last-updated {
+        font-size: 0.95rem;
+        color: #e2efff;
+        opacity: 0.92;
+        text-align: right;
+        min-width: 160px;
+      }
 
-  .chart-card {
-    background: rgba(26, 46, 26, 0.15);
-    border: 1px solid #1a2e1a;
-    border-radius: 6px;
-    padding: 20px;
-    position: relative;
-  }
+      .meta-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 30px;
+      }
 
-  .chart-card canvas {
-    width: 100% !important;
-    max-height: 340px;
-  }
+      .meta-card {
+        background: rgba(15, 24, 36, 0.88);
+        border: 1px solid rgba(109, 213, 255, 0.12);
+        border-radius: 14px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+      }
 
-  /* Stat cards */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 16px;
-    margin-bottom: 36px;
-  }
+      .meta-card .label {
+        font-size: 0.82rem;
+        color: #a7c8ef;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
 
-  .stat-card {
-    background: rgba(26, 46, 26, 0.12);
-    border: 1px solid #1a2e1a;
-    border-radius: 6px;
-    padding: 18px 16px;
-    text-align: center;
-  }
+      .meta-card .value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #eff7ff;
+      }
 
-  .stat-card .label {
-    font-size: 0.75rem;
-    color: #00cc66;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-  }
+      .meta-card .hint {
+        color: #c7e3ff;
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
 
-  .stat-card .value {
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: #00ff88;
-    line-height: 1;
-  }
+      /* Charts row */
+      .charts-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-bottom: 36px;
+      }
 
-  .stat-card .unit {
-    font-size: 0.85rem;
-    color: #00cc66;
-    font-weight: 400;
-  }
+      .chart-card {
+        background: rgba(16, 26, 38, 0.95);
+        border: 1px solid rgba(109, 213, 255, 0.12);
+        border-radius: 18px;
+        padding: 24px;
+        position: relative;
+        box-shadow: 0 20px 40px rgba(2, 9, 16, 0.32);
+      }
 
-  /* Timeline chart */
-  .timeline-section {
-    margin-bottom: 36px;
-  }
+      .chart-card canvas {
+        width: 100% !important;
+        max-height: 340px;
+      }
 
-  .timeline-section h2 {
-    font-size: 1rem;
-    font-weight: 400;
-    color: #00cc66;
-    margin-bottom: 16px;
-    letter-spacing: 1px;
-  }
+      /* Stat cards */
+      .stats-row {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(120px, 1fr));
+        gap: 16px;
+        margin-bottom: 36px;
+      }
 
-  .timeline-card {
-    background: rgba(26, 46, 26, 0.12);
-    border: 1px solid #1a2e1a;
-    border-radius: 6px;
-    padding: 20px;
-  }
+      .stat-card {
+        background: rgba(14, 24, 37, 0.94);
+        border: 1px solid rgba(109, 213, 255, 0.1);
+        border-radius: 16px;
+        padding: 20px 18px;
+        text-align: center;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+      }
 
-  .timeline-card canvas {
-    width: 100% !important;
-    max-height: 300px;
-  }
+      .stat-card .label {
+        font-size: 0.85rem;
+        color: #c9e7ff;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+      }
 
-  /* Daily average table */
-  .daily-section h2 {
-    font-size: 1rem;
-    font-weight: 400;
-    color: #00cc66;
-    margin-bottom: 16px;
-    letter-spacing: 1px;
-  }
+      .stat-card .value {
+        font-size: 2.25rem;
+        font-weight: 700;
+        color: #f0f8ff;
+        line-height: 1;
+      }
 
-  .daily-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: "Courier New", Courier, monospace;
-  }
+      .stat-card .unit {
+        font-size: 0.85rem;
+        color: #8ab5d8;
+        font-weight: 500;
+      }
 
-  .daily-table th {
-    text-align: right;
-    font-size: 0.7rem;
-    color: #00cc66;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 10px 16px;
-    border-bottom: 1px solid #1a2e1a;
-    font-weight: 600;
-  }
+      /* Timeline chart */
+      .timeline-section {
+        margin-bottom: 36px;
+      }
 
-  .daily-table th:first-child {
-    text-align: left;
-    width: 60px;
-  }
+      .timeline-section h2 {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #9fc7ff;
+        margin-bottom: 16px;
+        letter-spacing: 1px;
+      }
 
-  .daily-table td {
-    text-align: right;
-    padding: 12px 16px;
-    font-size: 0.9rem;
-    color: #00ff88;
-    border-bottom: 1px solid #1a2e1a0a;
-  }
+      .timeline-card {
+        background: rgba(16, 26, 38, 0.95);
+        border: 1px solid rgba(109, 213, 255, 0.12);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 18px 40px rgba(2, 9, 16, 0.28);
+      }
 
-  .daily-table td:first-child {
-    text-align: left;
-    font-weight: 700;
-    color: #00cc66;
-    font-size: 0.75rem;
-    letter-spacing: 1px;
-  }
+      .timeline-card canvas {
+        width: 100% !important;
+        max-height: 300px;
+      }
 
-  .daily-table tr:nth-child(even) {
-    background: #111811;
-  }
+      /* Daily average table */
+      .daily-section h2 {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #9fc7ff;
+        margin-bottom: 16px;
+        letter-spacing: 1px;
+      }
 
-  .daily-table tr:nth-child(odd) {
-    background: #0d0d0d;
-  }
+      .daily-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: Inter, system-ui, sans-serif;
+      }
 
-  /* Loading state */
-  .loading {
-    text-align: center;
-    padding: 60px;
-    color: #00cc66;
-    font-size: 0.9rem;
-    animation: pulse 1.5s infinite;
-  }
+      .daily-table th {
+        text-align: right;
+        font-size: 0.82rem;
+        color: #c8e6ff;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(109, 213, 255, 0.18);
+        font-weight: 700;
+      }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-  }
+      .daily-table th:first-child {
+        text-align: left;
+        width: 60px;
+      }
 
-  /* Responsive */
-  @media (max-width: 900px) {
-    .charts-row { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: repeat(3, 1fr); }
-  }
+      .daily-table td {
+        text-align: right;
+        padding: 15px 16px;
+        font-size: 1rem;
+        color: #e8f2ff;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
 
-  @media (max-width: 600px) {
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .container { padding: 16px 12px; }
-  }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>my activity</h1>
-    <span class="last-updated" id="lastUpdated">loading...</span>
-  </div>
+      .daily-table td:first-child {
+        text-align: left;
+        font-weight: 700;
+        color: #c7ebff;
+        font-size: 0.85rem;
+        letter-spacing: 1px;
+      }
 
-  <!-- Charts Row: Donut + Radar -->
-  <div class="charts-row">
-    <div class="chart-card">
-      <canvas id="donutChart"></canvas>
-    </div>
-    <div class="chart-card">
-      <canvas id="radarChart"></canvas>
-    </div>
-  </div>
+      .daily-table tr:nth-child(even) {
+        background: rgba(70, 95, 130, 0.08);
+      }
 
-  <!-- Stat Cards -->
-  <div class="stats-row" id="statsRow">
-    <div class="stat-card">
-      <div class="label">Left Clicks</div>
-      <div class="value" id="statLeftClicks">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Right Clicks</div>
-      <div class="value" id="statRightClicks">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Middle Clicks</div>
-      <div class="value" id="statMiddleClicks">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Keypresses</div>
-      <div class="value" id="statKeypresses">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Controller</div>
-      <div class="value" id="statControllerButtons">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Mouse Movement</div>
-      <div class="value" id="statMouseMovement">—<span class="unit">feet</span></div>
-    </div>
-  </div>
+      .daily-table tr:nth-child(odd) {
+        background: rgba(47, 68, 94, 0.08);
+      }
 
-  <!-- Timeline -->
-  <div class="timeline-section">
-    <h2>past 24 hours</h2>
-    <div class="timeline-card">
-      <canvas id="timelineChart"></canvas>
-    </div>
-  </div>
+      /* Loading state */
+      .loading {
+        text-align: center;
+        padding: 60px;
+        color: #d2e6ff;
+        font-size: 1rem;
+        animation: pulse 1.5s infinite;
+      }
 
-  <!-- Daily Average Table -->
-  <div class="daily-section">
-    <h2>avg daily activity</h2>
-    <table class="daily-table" id="dailyTable">
-      <thead>
-        <tr>
-          <th></th>
-          <th>LEFT CLICKS</th>
-          <th>RIGHT CLICKS</th>
-          <th>MIDDLE CLICKS</th>
-          <th>KEYPRESSES</th>
-          <th>CONTROLLER</th>
-          <th>MOUSE MOVEMENT</th>
-        </tr>
-      </thead>
-      <tbody id="dailyTableBody">
-        <tr><td colspan="7" class="loading">loading data...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<script>
-// ─── Helper: abbreviate numbers ──────────────────
-function abbrev(n) {
-  if (n == null) return '—';
-  const num = Number(n);
-  if (isNaN(num)) return '—';
-  if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'm';
-  if (num >= 1_000) return (num / 1_000).toFixed(num >= 10_000 ? 0 : 1) + 'k';
-  return Math.round(num).toLocaleString();
-}
-
-// ─── Chart.js global defaults ────────────────────
-Chart.defaults.color = '#00cc66';
-Chart.defaults.borderColor = '#1a2e1a';
-Chart.defaults.font.family = '"Courier New", Courier, monospace';
-Chart.defaults.font.size = 11;
-Chart.defaults.plugins.tooltip.backgroundColor = '#1a2e1a';
-Chart.defaults.plugins.tooltip.titleColor = '#00ff88';
-Chart.defaults.plugins.tooltip.bodyColor = '#00ff88';
-Chart.defaults.plugins.tooltip.borderColor = '#00cc66';
-Chart.defaults.plugins.tooltip.borderWidth = 1;
-Chart.defaults.plugins.tooltip.cornerRadius = 4;
-
-// ─── Green palette for charts ────────────────────
-const greenPalette = [
-  '#00ff88', '#00cc66', '#009944', '#00e070',
-  '#33ffaa', '#66ffcc', '#00884d', '#22dd77',
-  '#00bb55', '#44ffbb'
-];
-
-let donutChart, radarChart, timelineChart;
-
-// ─── Donut Chart ─────────────────────────────────
-function renderDonut(data) {
-  const ctx = document.getElementById('donutChart').getContext('2d');
-
-  // Take top 8, group rest as "other"
-  let sorted = [...data].sort((a, b) => b.seconds - a.seconds);
-  let top8 = sorted.slice(0, 8);
-  let rest = sorted.slice(8);
-  if (rest.length > 0) {
-    const otherPct = rest.reduce((s, d) => s + d.percentage, 0);
-    top8.push({ app_name: 'other', percentage: Math.round(otherPct * 100) / 100 });
-  }
-
-  const labels = top8.map(d => d.app_name);
-  const values = top8.map(d => d.percentage);
-  const colors = top8.map((_, i) => greenPalette[i % greenPalette.length]);
-
-  if (donutChart) donutChart.destroy();
-  donutChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors,
-        borderColor: '#0d0d0d',
-        borderWidth: 2,
-        hoverBorderColor: '#00ff88',
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      cutout: '55%',
-      plugins: {
-        legend: {
-          position: 'left',
-          labels: {
-            color: '#00cc66',
-            padding: 10,
-            font: { size: 11, family: '"Courier New", monospace' },
-            generateLabels: function(chart) {
-              const ds = chart.data.datasets[0];
-              return chart.data.labels.map((label, i) => ({
-                text: `${label} (${ds.data[i]}%)`,
-                fillStyle: ds.backgroundColor[i],
-                strokeStyle: '#0d0d0d',
-                lineWidth: 1,
-                index: i,
-                hidden: false,
-              }));
-            }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => `${ctx.label}: ${ctx.parsed}%`
-          }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.4;
+        }
+        50% {
+          opacity: 1;
         }
       }
-    }
-  });
-}
 
-// ─── Radar Chart ─────────────────────────────────
-function renderRadar(data) {
-  const ctx = document.getElementById('radarChart').getContext('2d');
-
-  // Aggregate by category
-  const catMap = {};
-  const categories = ['coding', 'gaming', 'browser', 'communication', 'media', 'creative', 'productivity', 'other'];
-  categories.forEach(c => catMap[c] = 0);
-
-  const totalSecs = data.reduce((s, d) => s + d.seconds, 0) || 1;
-
-  data.forEach(d => {
-    const cat = categories.includes(d.category) ? d.category : 'other';
-    catMap[cat] = (catMap[cat] || 0) + d.seconds;
-  });
-
-  const labels = categories.map(c => `${c} (${Math.round(catMap[c] / totalSecs * 100)}%)`);
-  const values = categories.map(c => Math.round(catMap[c] / totalSecs * 100));
-
-  if (radarChart) radarChart.destroy();
-  radarChart = new Chart(ctx, {
-    type: 'radar',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: 'rgba(0, 255, 136, 0.08)',
-        borderColor: '#00ff88',
-        borderWidth: 1.5,
-        pointBackgroundColor: '#00ff88',
-        pointBorderColor: '#00ff88',
-        pointRadius: 3,
-        pointHoverRadius: 5,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: { label: (ctx) => `${ctx.parsed.r}%` }
+      /* Responsive */
+      @media (max-width: 900px) {
+        .charts-row {
+          grid-template-columns: 1fr;
         }
-      },
-      scales: {
-        r: {
-          beginAtZero: true,
-          angleLines: { color: '#1a2e1a' },
-          grid: { color: '#1a2e1a' },
-          pointLabels: {
-            color: '#00cc66',
-            font: { size: 10, family: '"Courier New", monospace' }
+        .meta-row {
+          grid-template-columns: 1fr;
+        }
+        .stats-row {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
+      @media (max-width: 600px) {
+        .stats-row {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .container {
+          padding: 16px 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div>
+          <h1><b>My Activity</b></h1>
+          <p>
+            a calm, dark view of your app usage and motion trends — updated
+            every minute for continuous insight.
+          </p>
+        </div>
+        <span class="last-updated" id="lastUpdated">loading...</span>
+      </div>
+
+      <div class="meta-row">
+        <div class="meta-card">
+          <div class="label">active apps</div>
+          <div class="value" id="metaActiveApps">—</div>
+          <div class="hint">Apps seen in the last 24 hours.</div>
+        </div>
+        <div class="meta-card">
+          <div class="label">top app</div>
+          <div class="value" id="metaTopApp">—</div>
+          <div class="hint">The app where you spent the most time.</div>
+        </div>
+        <div class="meta-card">
+          <div class="label">refresh cadence</div>
+          <div class="value">60s</div>
+          <div class="hint">
+            Dashboard data refreshes automatically every minute.
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row: Donut + Radar -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <canvas id="donutChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="stats-row" id="statsRow">
+        <div class="stat-card">
+          <div class="label">Left Clicks</div>
+          <div class="value" id="statLeftClicks">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Right Clicks</div>
+          <div class="value" id="statRightClicks">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Middle Clicks</div>
+          <div class="value" id="statMiddleClicks">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Keypresses</div>
+          <div class="value" id="statKeypresses">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Controller</div>
+          <div class="value" id="statControllerButtons">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Mouse Movement</div>
+          <div class="value" id="statMouseMovement">
+            —<span class="unit">feet</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline-section">
+        <h2>past 24 hours</h2>
+        <div class="timeline-card">
+          <canvas id="timelineChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Daily Average Table -->
+      <div class="daily-section">
+        <h2>avg daily activity</h2>
+        <table class="daily-table" id="dailyTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>LEFT CLICKS</th>
+              <th>RIGHT CLICKS</th>
+              <th>MIDDLE CLICKS</th>
+              <th>KEYPRESSES</th>
+              <th>CONTROLLER</th>
+              <th>MOUSE MOVEMENT</th>
+            </tr>
+          </thead>
+          <tbody id="dailyTableBody">
+            <tr>
+              <td colspan="7" class="loading">loading data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      // ─── Helper: abbreviate numbers ──────────────────
+      function abbrev(n) {
+        if (n == null) return "—";
+        const num = Number(n);
+        if (isNaN(num)) return "—";
+        if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + "m";
+        if (num >= 1_000)
+          return (num / 1_000).toFixed(num >= 10_000 ? 0 : 1) + "k";
+        return Math.round(num).toLocaleString();
+      }
+
+      // ─── Chart.js global defaults ────────────────────
+      Chart.defaults.color = "#9ecaff";
+      Chart.defaults.borderColor = "rgba(109, 213, 255, 0.14)";
+      Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+      Chart.defaults.font.size = 12;
+      Chart.defaults.plugins.tooltip.backgroundColor = "rgba(12, 21, 33, 0.95)";
+      Chart.defaults.plugins.tooltip.titleColor = "#d7ebff";
+      Chart.defaults.plugins.tooltip.bodyColor = "#c7e7ff";
+      Chart.defaults.plugins.tooltip.borderColor = "rgba(109, 213, 255, 0.26)";
+      Chart.defaults.plugins.tooltip.borderWidth = 1;
+      Chart.defaults.plugins.tooltip.cornerRadius = 6;
+
+      const calmPalette = [
+        "#4ec4ff",
+        "#48e8c7",
+        "#ffba6f",
+        "#ff7ebd",
+        "#c98cff",
+        "#6ab3ff",
+        "#5ce0ae",
+        "#f9d17f",
+        "#97d4ff",
+        "#cedbff",
+      ];
+
+      let donutChart, radarChart, timelineChart;
+
+      // ─── Donut Chart ─────────────────────────────────
+      function renderDonut(data) {
+        const ctx = document.getElementById("donutChart").getContext("2d");
+
+        // Take top 8, group rest as "other"
+        let sorted = [...data].sort((a, b) => b.seconds - a.seconds);
+        let top8 = sorted.slice(0, 8);
+        let rest = sorted.slice(8);
+        if (rest.length > 0) {
+          const otherPct = rest.reduce((s, d) => s + d.percentage, 0);
+          top8.push({
+            app_name: "other",
+            percentage: Math.round(otherPct * 100) / 100,
+          });
+        }
+
+        const labels = top8.map((d) => d.app_name);
+        const values = top8.map((d) => d.percentage);
+        const colors = top8.map((_, i) => calmPalette[i % calmPalette.length]);
+
+        if (donutChart) donutChart.destroy();
+        donutChart = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels,
+            datasets: [
+              {
+                data: values,
+                backgroundColor: colors,
+                borderColor: "rgba(255,255,255,0.12)",
+                borderWidth: 1.8,
+                hoverBorderColor: "#ffffff",
+                hoverBorderWidth: 2.6,
+              },
+            ],
           },
-          ticks: {
-            display: false,
-            stepSize: 10,
-          }
-        }
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "55%",
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  color: "#ffffff",
+                  padding: 12,
+                  font: { size: 12, family: "Inter, system-ui, sans-serif" },
+                  boxWidth: 14,
+                  generateLabels: function (chart) {
+                    const ds = chart.data.datasets[0];
+                    return chart.data.labels.map((label, i) => ({
+                      text: `${label} (${ds.data[i]}%)`,
+                      fillStyle: ds.backgroundColor[i],
+                      strokeStyle: "#0d0d0d",
+                      lineWidth: 1,
+                      index: i,
+                      hidden: false,
+                    }));
+                  },
+                },
+              },
+              tooltip: {
+                backgroundColor: "rgba(10, 18, 30, 0.98)",
+                borderColor: "rgba(255, 255, 255, 0.18)",
+                borderWidth: 1,
+                titleColor: "#eff8ff",
+                bodyColor: "#e5f1ff",
+                callbacks: {
+                  label: (ctx) => `${ctx.label}: ${ctx.parsed}%`,
+                },
+              },
+            },
+          },
+        });
       }
-    }
-  });
-}
 
-// ─── Timeline Chart (past 24h) ───────────────────
-function renderTimeline(data) {
-  const ctx = document.getElementById('timelineChart').getContext('2d');
+      // ─── Radar Chart ─────────────────────────────────
+      function renderRadar(data) {
+        const ctx = document.getElementById("radarChart").getContext("2d");
 
-  // Convert UTC hour_bucket to local time using the browser's timezone
-  const labels = data.map(d => {
-    try {
-      // hour_bucket is like "2026-04-16T14:00" (UTC)
-      // Append ":00Z" to make it a valid ISO 8601 UTC timestamp
-      const utcDate = new Date(d.hour_bucket + ":00Z");
-      return utcDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    } catch {
-      return d.hour_bucket;
-    }
-  });
+        // Aggregate by category
+        const catMap = {};
+        const categories = [
+          "coding",
+          "gaming",
+          "browser",
+          "communication",
+          "media",
+          "creative",
+          "productivity",
+          "other",
+        ];
+        categories.forEach((c) => (catMap[c] = 0));
 
-  if (timelineChart) timelineChart.destroy();
-  timelineChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Keypresses',
-          data: data.map(d => d.keypresses),
-          borderColor: '#4488ff',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-        {
-          label: 'Mouse Movement',
-          data: data.map(d => Math.round(d.mouse_feet)),
-          borderColor: '#aaff44',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-        {
-          label: 'Middle Clicks',
-          data: data.map(d => d.middle_clicks),
-          borderColor: '#ff8844',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-        {
-          label: 'Right Clicks',
-          data: data.map(d => d.right_clicks),
-          borderColor: '#aa66ff',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-        {
-          label: 'Left Clicks',
-          data: data.map(d => d.left_clicks),
-          borderColor: '#00ff88',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-        {
-          label: 'Controller',
-          data: data.map(d => d.controller_buttons),
-          borderColor: '#ff44aa',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
-        },
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            color: '#00cc66',
-            padding: 16,
-            usePointStyle: true,
-            pointStyle: 'rectRounded',
-            font: { size: 11, family: '"Courier New", monospace' }
-          }
-        },
-        tooltip: {
-          mode: 'index',
-          intersect: false,
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: '#1a2e1a44' },
-          ticks: {
-            color: '#00cc66',
-            maxRotation: 45,
-            font: { size: 10, family: '"Courier New", monospace' }
-          }
-        },
-        y: {
-          grid: { color: '#1a2e1a44' },
-          ticks: {
-            color: '#00cc66',
-            font: { size: 10, family: '"Courier New", monospace' },
-            callback: (v) => abbrev(v)
-          }
-        }
+        const totalSecs = data.reduce((s, d) => s + d.seconds, 0) || 1;
+
+        data.forEach((d) => {
+          const cat = categories.includes(d.category) ? d.category : "other";
+          catMap[cat] = (catMap[cat] || 0) + d.seconds;
+        });
+
+        const labels = categories.map(
+          (c) => `${c} (${Math.round((catMap[c] / totalSecs) * 100)}%)`,
+        );
+        const values = categories.map((c) =>
+          Math.round((catMap[c] / totalSecs) * 100),
+        );
+
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(ctx, {
+          type: "radar",
+          data: {
+            labels,
+            datasets: [
+              {
+                data: values,
+                backgroundColor: "rgba(78, 196, 255, 0.18)",
+                borderColor: "#4ec4ff",
+                borderWidth: 2.8,
+                pointBackgroundColor: "#eff8ff",
+                pointBorderColor: "#4ec4ff",
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 8,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: { label: (ctx) => `${ctx.parsed.r}%` },
+              },
+            },
+            scales: {
+              r: {
+                beginAtZero: true,
+                angleLines: { color: "rgba(109, 213, 255, 0.12)" },
+                grid: { color: "rgba(109, 213, 255, 0.12)" },
+                pointLabels: {
+                  color: "#edf5ff",
+                  font: { size: 11, family: "Inter, system-ui, sans-serif" },
+                  padding: 10,
+                },
+                angleLines: { color: "rgba(255,255,255,0.12)", lineWidth: 1.2 },
+                grid: { lineWidth: 1, color: "rgba(255,255,255,0.12)" },
+                ticks: {
+                  display: false,
+                  stepSize: 10,
+                },
+              },
+            },
+          },
+        });
       }
-    }
-  });
-}
 
-// ─── Stat Cards ──────────────────────────────────
-function renderStats(totals) {
-  document.getElementById('statLeftClicks').textContent = abbrev(totals.left_clicks);
-  document.getElementById('statRightClicks').textContent = abbrev(totals.right_clicks);
-  document.getElementById('statMiddleClicks').textContent = abbrev(totals.middle_clicks);
-  document.getElementById('statKeypresses').textContent = abbrev(totals.keypresses);
-  document.getElementById('statControllerButtons').textContent = abbrev(totals.controller_buttons);
+      // ─── Timeline Chart (past 24h) ───────────────────
+      function renderTimeline(data) {
+        const ctx = document.getElementById("timelineChart").getContext("2d");
 
-  const mf = totals.mouse_feet || 0;
-  document.getElementById('statMouseMovement').innerHTML = `${abbrev(mf)}<span class="unit">feet</span>`;
-}
+        // Convert UTC hour_bucket to local time using the browser's timezone
+        const labels = data.map((d) => {
+          try {
+            // hour_bucket is like "2026-04-16T14:00" (UTC)
+            // Append ":00Z" to make it a valid ISO 8601 UTC timestamp
+            const utcDate = new Date(d.hour_bucket + ":00Z");
+            return utcDate.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            });
+          } catch {
+            return d.hour_bucket;
+          }
+        });
 
-// ─── Daily Average Table ─────────────────────────
-function renderDailyAvg(data) {
-  const tbody = document.getElementById('dailyTableBody');
-  if (!data || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#00cc6688;padding:20px;">no data yet — keep monitoring!</td></tr>';
-    return;
-  }
+        if (timelineChart) timelineChart.destroy();
+        timelineChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Keypresses",
+                data: data.map((d) => d.keypresses),
+                borderColor: "#4ec4ff",
+                backgroundColor: "rgba(78, 196, 255, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+              {
+                label: "Mouse Movement",
+                data: data.map((d) => Math.round(d.mouse_feet)),
+                borderColor: "#48e8c7",
+                backgroundColor: "rgba(72, 232, 199, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+              {
+                label: "Middle Clicks",
+                data: data.map((d) => d.middle_clicks),
+                borderColor: "#ffba6f",
+                backgroundColor: "rgba(255, 186, 111, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+              {
+                label: "Right Clicks",
+                data: data.map((d) => d.right_clicks),
+                borderColor: "#c98cff",
+                backgroundColor: "rgba(201, 140, 255, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+              {
+                label: "Left Clicks",
+                data: data.map((d) => d.left_clicks),
+                borderColor: "#86c8ff",
+                backgroundColor: "rgba(134, 200, 255, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+              {
+                label: "Controller",
+                data: data.map((d) => d.controller_buttons),
+                borderColor: "#ff7ebd",
+                backgroundColor: "rgba(255, 126, 189, 0.12)",
+                borderWidth: 2.6,
+                tension: 0.28,
+                pointRadius: 2.8,
+                pointHoverRadius: 5,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  color: "#e3f1ff",
+                  padding: 16,
+                  usePointStyle: true,
+                  pointStyle: "rectRounded",
+                  font: { size: 12, family: "Inter, system-ui, sans-serif" },
+                },
+              },
+              tooltip: {
+                mode: "index",
+                intersect: false,
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(109, 213, 255, 0.18)" },
+                ticks: {
+                  color: "#e3f1ff",
+                  maxRotation: 45,
+                  font: { size: 11, family: "Inter, system-ui, sans-serif" },
+                },
+              },
+              y: {
+                grid: { color: "rgba(109, 213, 255, 0.18)" },
+                ticks: {
+                  color: "#e3f1ff",
+                  font: { size: 11, family: "Inter, system-ui, sans-serif" },
+                  callback: (v) => abbrev(v),
+                },
+              },
+            },
+          },
+        });
+      }
 
-  tbody.innerHTML = data.map(row => `
+      // ─── Stat Cards ──────────────────────────────────
+      function renderStats(totals) {
+        document.getElementById("statLeftClicks").textContent = abbrev(
+          totals.left_clicks,
+        );
+        document.getElementById("statRightClicks").textContent = abbrev(
+          totals.right_clicks,
+        );
+        document.getElementById("statMiddleClicks").textContent = abbrev(
+          totals.middle_clicks,
+        );
+        document.getElementById("statKeypresses").textContent = abbrev(
+          totals.keypresses,
+        );
+        document.getElementById("statControllerButtons").textContent = abbrev(
+          totals.controller_buttons,
+        );
+
+        const mf = totals.mouse_feet || 0;
+        document.getElementById("statMouseMovement").innerHTML =
+          `${abbrev(mf)}<span class="unit">feet</span>`;
+      }
+
+      function renderMeta(appDist) {
+        const activeApps = appDist ? appDist.length : 0;
+        const topApp =
+          appDist && appDist.length > 0
+            ? [...appDist].sort((a, b) => b.seconds - a.seconds)[0].app_name
+            : "—";
+
+        document.getElementById("metaActiveApps").textContent = activeApps;
+        document.getElementById("metaTopApp").textContent = topApp;
+      }
+
+      // ─── Daily Average Table ─────────────────────────
+      function renderDailyAvg(data) {
+        const tbody = document.getElementById("dailyTableBody");
+        if (!data || data.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:#9cc3e3;padding:20px;">no data yet — keep monitoring!</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data
+          .map(
+            (row) => `
     <tr>
       <td>${row.day}</td>
       <td>${Math.round(row.left_clicks).toLocaleString()}</td>
@@ -603,46 +793,49 @@ function renderDailyAvg(data) {
       <td>${Math.round(row.controller_buttons).toLocaleString()}</td>
       <td>${Math.round(row.mouse_feet).toLocaleString()} feet</td>
     </tr>
-  `).join('');
-}
+  `,
+          )
+          .join("");
+      }
 
-// ─── Data Fetching ───────────────────────────────
-async function fetchJSON(url) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (e) {
-    console.error(`Failed to fetch ${url}:`, e);
-    return null;
-  }
-}
+      // ─── Data Fetching ───────────────────────────────
+      async function fetchJSON(url) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (e) {
+          console.error(`Failed to fetch ${url}:`, e);
+          return null;
+        }
+      }
 
-async function loadAllData() {
-  const [totals, timeline, appDist, dailyAvg] = await Promise.all([
-    fetchJSON('/api/totals'),
-    fetchJSON('/api/timeline'),
-    fetchJSON('/api/app-distribution'),
-    fetchJSON('/api/daily-avg'),
-  ]);
+      async function loadAllData() {
+        const [totals, timeline, appDist, dailyAvg] = await Promise.all([
+          fetchJSON("/api/totals"),
+          fetchJSON("/api/timeline"),
+          fetchJSON("/api/app-distribution"),
+          fetchJSON("/api/daily-avg"),
+        ]);
 
-  if (totals) renderStats(totals);
-  if (appDist && appDist.length > 0) {
-    renderDonut(appDist);
-    renderRadar(appDist);
-  }
-  if (timeline) renderTimeline(timeline);
-  if (dailyAvg) renderDailyAvg(dailyAvg);
+        if (totals) renderStats(totals);
+        if (appDist && appDist.length > 0) {
+          renderMeta(appDist);
+          renderDonut(appDist);
+          renderRadar(appDist);
+        }
+        if (timeline) renderTimeline(timeline);
+        if (dailyAvg) renderDailyAvg(dailyAvg);
 
-  // Update timestamp
-  const now = new Date();
-  document.getElementById('lastUpdated').textContent =
-    `last updated: ${now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-}
+        // Update timestamp
+        const now = new Date();
+        document.getElementById("lastUpdated").textContent =
+          `last updated: ${now.toLocaleTimeString("en-US", { hour12: true, hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      }
 
-// ─── Init + Auto-refresh ─────────────────────────
-loadAllData();
-setInterval(loadAllData, 60_000);
-</script>
-</body>
+      // ─── Init + Auto-refresh ─────────────────────────
+      loadAllData();
+      setInterval(loadAllData, 60_000);
+    </script>
+  </body>
 </html>
