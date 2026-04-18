@@ -23613,8 +23613,8 @@
       "source_file": "C:\\Users\\User\\Documents\\GitHub\\stealthmon\\src\\db\\mod.rs",
       "source_location": "L537",
       "weight": 1.0,
-      "_src": "mod_database_query_character_stats",
-      "_tgt": "chart_umd_min_qs_get",
+      "_src": "chart_umd_min_qs_get",
+      "_tgt": "mod_database_query_character_stats",
       "source": "chart_umd_min_qs_get",
       "target": "mod_database_query_character_stats"
     },
@@ -30573,8 +30573,8 @@
       "source_file": "C:\\Users\\User\\Documents\\GitHub\\stealthmon\\src\\db\\mod.rs",
       "source_location": "L526",
       "weight": 1.0,
-      "_src": "mod_database_query_character_stats",
-      "_tgt": "chart_umd_min_no_format",
+      "_src": "chart_umd_min_no_format",
+      "_tgt": "mod_database_query_character_stats",
       "source": "chart_umd_min_no_format",
       "target": "mod_database_query_character_stats"
     },
@@ -33417,8 +33417,8 @@
       "source_file": "C:\\Users\\User\\Documents\\GitHub\\stealthmon\\src\\server\\api.rs",
       "source_location": "L140",
       "weight": 1.0,
-      "_src": "api_characters",
-      "_tgt": "mod_database_query_character_stats",
+      "_src": "mod_database_query_character_stats",
+      "_tgt": "api_characters",
       "source": "mod_database_query_character_stats",
       "target": "api_characters"
     },
