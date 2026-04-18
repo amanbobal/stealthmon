@@ -366,6 +366,83 @@
         }
       }
 
+      /* Settings Icon & Modal */
+      .settings-btn {
+        background: none;
+        border: none;
+        color: #d7ebff;
+        font-size: 1.5rem;
+        cursor: pointer;
+        opacity: 0.7;
+        transition: transform 0.2s, opacity 0.2s;
+        position: absolute;
+        top: 30px;
+        right: 40px;
+        z-index: 1000;
+      }
+      .settings-btn:hover {
+        opacity: 1;
+        transform: rotate(45deg);
+      }
+      .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(4, 7, 11, 0.85);
+        backdrop-filter: blur(8px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .modal-overlay.open {
+        display: flex;
+        animation: fadeIn 0.3s forwards;
+      }
+      @keyframes fadeIn { to { opacity: 1; } }
+      .modal-content {
+        background: #0f1620;
+        border: 1px solid rgba(109, 213, 255, 0.2);
+        border-radius: 20px;
+        width: 100%;
+        max-width: 480px;
+        padding: 30px;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+      .modal-header h2 { font-size: 1.4rem; color: #d7ebff; font-weight: 600; }
+      .modal-close {
+        background: none; border: none; color: #d7ebff; font-size: 1.5rem; cursor: pointer; opacity: 0.7;
+      }
+      .modal-close:hover { opacity: 1; }
+      .setting-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      .setting-item:last-child { border-bottom: none; }
+      .setting-label { font-size: 0.95rem; color: #b5d4f1; }
+      .setting-label.startup { color: #f9d17f; font-weight: 600; }
+      /* Toggle Switch */
+      .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #2a3a4d; transition: .3s; border-radius: 24px;
+      }
+      .slider:before {
+        position: absolute; content: ""; height: 18px; width: 18px;
+        left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;
+      }
+      input:checked + .slider { background-color: #48e8c7; }
+      input:focus + .slider { box-shadow: 0 0 1px #48e8c7; }
+      input:checked + .slider:before { transform: translateX(20px); }
+
       /* Responsive */
       @media (max-width: 900px) {
         .charts-row {
@@ -391,6 +468,7 @@
   </head>
   <body>
     <div class="container">
+      <button class="settings-btn" id="openSettings" title="Settings">⚙️</button>
       <div class="header">
         <div>
           <h1><b>My Activity</b></h1>
@@ -432,11 +510,9 @@
           <div class="hint">The app where you spent the most time.</div>
         </div>
         <div class="meta-card">
-          <div class="label">refresh cadence</div>
-          <div class="value">60s</div>
-          <div class="hint">
-            Dashboard data refreshes automatically every minute.
-          </div>
+          <div class="label">favorite key</div>
+          <div class="value" id="metaFavoriteKey">—</div>
+          <div class="hint">Your most abused character.</div>
         </div>
       </div>
 
@@ -452,27 +528,27 @@
 
       <!-- Stat Cards -->
       <div class="stats-row" id="statsRow">
-        <div class="stat-card">
+        <div class="stat-card" id="cardLeftClicks">
           <div class="label">Left Clicks</div>
           <div class="value" id="statLeftClicks">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="cardRightClicks">
           <div class="label">Right Clicks</div>
           <div class="value" id="statRightClicks">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="cardMiddleClicks">
           <div class="label">Middle Clicks</div>
           <div class="value" id="statMiddleClicks">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="cardKeypresses">
           <div class="label">Keypresses</div>
           <div class="value" id="statKeypresses">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="cardController">
           <div class="label">Controller</div>
           <div class="value" id="statControllerButtons">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="cardMouseMovement">
           <div class="label">Mouse Movement</div>
           <div class="value" id="statMouseMovement">
             —<span class="unit">feet</span>
@@ -481,26 +557,34 @@
       </div>
 
       <!-- Timeline -->
-      <div class="timeline-section">
+      <div class="timeline-section" id="timelineSectionView">
         <h2>past 24 hours</h2>
         <div class="timeline-card">
           <canvas id="timelineChart"></canvas>
         </div>
       </div>
 
+      <!-- Characters -->
+      <div class="timeline-section" id="charSectionView">
+        <h2>Your top abused keys</h2>
+        <div class="timeline-card">
+          <canvas id="characterChart"></canvas>
+        </div>
+      </div>
+
       <!-- Daily Average Table -->
-      <div class="daily-section">
+      <div class="daily-section" id="dailyTableSection">
         <h2>daily activity</h2>
         <table class="daily-table" id="dailyTable">
           <thead>
-            <tr>
+            <tr id="dailyTableHead">
               <th></th>
-              <th>LEFT CLICKS</th>
-              <th>RIGHT CLICKS</th>
-              <th>MIDDLE CLICKS</th>
-              <th>KEYPRESSES</th>
-              <th>CONTROLLER</th>
-              <th>MOUSE MOVEMENT</th>
+              <th data-stat="LeftClicks">LEFT CLICKS</th>
+              <th data-stat="RightClicks">RIGHT CLICKS</th>
+              <th data-stat="MiddleClicks">MIDDLE CLICKS</th>
+              <th data-stat="Keypresses">KEYPRESSES</th>
+              <th data-stat="Controller">CONTROLLER</th>
+              <th data-stat="MouseMovement">MOUSE MOVEMENT</th>
             </tr>
           </thead>
           <tbody id="dailyTableBody">
@@ -512,7 +596,47 @@
       </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Dashboard Settings</h2>
+          <button class="modal-close" id="closeSettings">✕</button>
+        </div>
+        <div id="settingsList"></div>
+      </div>
+    </div>
+
     <script>
+      // ─── Settings State ──────────────────────────────
+      const defaultSettings = {
+        showLeftClicks: true,
+        showRightClicks: true,
+        showMiddleClicks: true,
+        showKeypresses: true,
+        showMouseMovement: true,
+        showController: true,
+        showCharacters: true,
+      };
+
+      function getSettings() {
+        try {
+          const stored = localStorage.getItem('stealthmon_settings');
+          if (stored) return { ...defaultSettings, ...JSON.parse(stored) };
+        } catch (e) {
+          console.error("Local storage error:", e);
+        }
+        return defaultSettings;
+      }
+
+      function saveSettings(settings) {
+        try {
+          localStorage.setItem('stealthmon_settings', JSON.stringify(settings));
+        } catch (e) {}
+      }
+
+      let appSettings = getSettings();
+
       // ─── Helper: abbreviate numbers ──────────────────
       function abbrev(n) {
         if (n == null) return "—";
@@ -556,7 +680,7 @@
         "365d": "Past year",
       };
 
-      let donutChart, radarChart, timelineChart;
+      let donutChart, radarChart, timelineChart, charChart;
 
       function selectedRange() {
         return document.getElementById("rangeSelect").value;
@@ -747,6 +871,91 @@
         });
       }
 
+      // Keep track of latest character data so we can redraw on resize
+      let currentCharacterData = [];
+
+      function drawStarChart() {
+         if (!appSettings.showCharacters) return;
+         if (!currentCharacterData || currentCharacterData.length === 0) return;
+         
+         const canvas = document.getElementById("characterChart");
+         if (!canvas) return;
+         const ctx = canvas.getContext("2d");
+         
+         const width = canvas.parentElement.clientWidth;
+         const height = 400; // typical timeline card height
+         canvas.width = width * window.devicePixelRatio;
+         canvas.height = height * window.devicePixelRatio;
+         canvas.style.width = width + "px";
+         canvas.style.height = height + "px";
+         ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+         
+         ctx.clearRect(0, 0, width, height);
+         
+         const cx = width / 2;
+         const cy = height / 2;
+         const maxRadius = Math.min(cx, cy) - 40;
+         
+         let sorted = [...currentCharacterData].sort((a, b) => b.count - a.count).slice(0, 15);
+         const maxCount = sorted[0].count;
+         const angleStep = (Math.PI * 2) / sorted.length;
+         
+         ctx.beginPath();
+         ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+         ctx.fillStyle = "#ffffff";
+         ctx.fill();
+
+         sorted.forEach((d, i) => {
+           // Distribute evenly around the center, slightly offsetting the first one
+           const angle = i * angleStep - Math.PI / 2; 
+           const normalized = (d.count / maxCount);
+           const r = maxRadius * 0.15 + (maxRadius * 0.85 * normalized);
+
+           const x = cx + Math.cos(angle) * r;
+           const y = cy + Math.sin(angle) * r;
+
+           ctx.beginPath();
+           ctx.moveTo(cx, cy);
+           ctx.lineTo(x, y);
+           ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+           ctx.lineWidth = 2;
+           ctx.stroke();
+
+           ctx.font = "bold 18px Inter, monospace";
+           ctx.fillStyle = "#ffffff";
+           ctx.textAlign = "center";
+           ctx.textBaseline = "middle";
+           const tx = cx + Math.cos(angle) * (r + 15);
+           const ty = cy + Math.sin(angle) * (r + 15);
+           ctx.fillText(d.character, tx, ty);
+         });
+      }
+
+      window.addEventListener('resize', () => {
+         if (appSettings.showCharacters) drawStarChart();
+      });
+
+      // ─── Character Chart ──────────────────────
+      function renderCharacters(data) {
+        if (!appSettings.showCharacters) {
+          document.getElementById('charSectionView').style.display = 'none';
+          return;
+        }
+        document.getElementById('charSectionView').style.display = 'block';
+
+        let sorted = [...data].sort((a, b) => b.count - a.count);
+        if (sorted.length > 0) {
+           document.getElementById("metaFavoriteKey").textContent = `'${sorted[0].character}'`;
+        } else {
+           document.getElementById("metaFavoriteKey").textContent = "—";
+        }
+
+        if (charChart) { charChart.destroy(); charChart = null; }
+        
+        currentCharacterData = data;
+        drawStarChart();
+      }
+
       // ─── Timeline Chart (past 24h) ───────────────────
       function renderTimeline(data) {
         const ctx = document.getElementById("timelineChart").getContext("2d");
@@ -760,7 +969,7 @@
           data: {
             labels,
             datasets: [
-              {
+              appSettings.showKeypresses ? {
                 label: "Keypresses",
                 data: data.map((d) => d.keypresses),
                 borderColor: "#4ec4ff",
@@ -769,8 +978,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-              {
+              } : null,
+              appSettings.showMouseMovement ? {
                 label: "Mouse Movement",
                 data: data.map((d) => Math.round(d.mouse_feet)),
                 borderColor: "#48e8c7",
@@ -779,8 +988,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-              {
+              } : null,
+              appSettings.showMiddleClicks ? {
                 label: "Middle Clicks",
                 data: data.map((d) => d.middle_clicks),
                 borderColor: "#ffba6f",
@@ -789,8 +998,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-              {
+              } : null,
+              appSettings.showRightClicks ? {
                 label: "Right Clicks",
                 data: data.map((d) => d.right_clicks),
                 borderColor: "#c98cff",
@@ -799,8 +1008,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-              {
+              } : null,
+              appSettings.showLeftClicks ? {
                 label: "Left Clicks",
                 data: data.map((d) => d.left_clicks),
                 borderColor: "#86c8ff",
@@ -809,8 +1018,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-              {
+              } : null,
+              appSettings.showController ? {
                 label: "Controller",
                 data: data.map((d) => d.controller_buttons),
                 borderColor: "#ff7ebd",
@@ -819,8 +1028,8 @@
                 tension: 0.28,
                 pointRadius: 2.8,
                 pointHoverRadius: 5,
-              },
-            ],
+              } : null,
+            ].filter(d => d !== null),
           },
           options: {
             responsive: true,
@@ -866,22 +1075,22 @@
 
       // ─── Stat Cards ──────────────────────────────────
       function renderStats(totals) {
-        document.getElementById("statLeftClicks").textContent = abbrev(
-          totals.left_clicks,
-        );
-        document.getElementById("statRightClicks").textContent = abbrev(
-          totals.right_clicks,
-        );
-        document.getElementById("statMiddleClicks").textContent = abbrev(
-          totals.middle_clicks,
-        );
-        document.getElementById("statKeypresses").textContent = abbrev(
-          totals.keypresses,
-        );
-        document.getElementById("statControllerButtons").textContent = abbrev(
-          totals.controller_buttons,
-        );
+        document.getElementById('cardLeftClicks').style.display = appSettings.showLeftClicks ? 'block' : 'none';
+        document.getElementById("statLeftClicks").textContent = abbrev(totals.left_clicks);
 
+        document.getElementById('cardRightClicks').style.display = appSettings.showRightClicks ? 'block' : 'none';
+        document.getElementById("statRightClicks").textContent = abbrev(totals.right_clicks);
+
+        document.getElementById('cardMiddleClicks').style.display = appSettings.showMiddleClicks ? 'block' : 'none';
+        document.getElementById("statMiddleClicks").textContent = abbrev(totals.middle_clicks);
+
+        document.getElementById('cardKeypresses').style.display = appSettings.showKeypresses ? 'block' : 'none';
+        document.getElementById("statKeypresses").textContent = abbrev(totals.keypresses);
+
+        document.getElementById('cardController').style.display = appSettings.showController ? 'block' : 'none';
+        document.getElementById("statControllerButtons").textContent = abbrev(totals.controller_buttons);
+
+        document.getElementById('cardMouseMovement').style.display = appSettings.showMouseMovement ? 'block' : 'none';
         const mf = totals.mouse_feet || 0;
         document.getElementById("statMouseMovement").innerHTML =
           `${abbrev(mf)}<span class="unit">feet</span>`;
@@ -900,6 +1109,13 @@
 
       // ─── Daily Average Table ─────────────────────────
       function renderDailyAvg(data) {
+        // Toggle visibility of columns
+        const headers = document.querySelectorAll('#dailyTableHead th[data-stat]');
+        headers.forEach(h => {
+          const s = appSettings[`show${h.dataset.stat}`];
+          h.style.display = s ? 'table-cell' : 'none';
+        });
+
         const tbody = document.getElementById("dailyTableBody");
         if (!data || data.length === 0) {
           tbody.innerHTML =
@@ -912,17 +1128,89 @@
             (row) => `
     <tr>
       <td>${row.day}</td>
-      <td>${Math.round(row.left_clicks).toLocaleString()}</td>
-      <td>${Math.round(row.right_clicks).toLocaleString()}</td>
-      <td>${Math.round(row.middle_clicks).toLocaleString()}</td>
-      <td>${Math.round(row.keypresses).toLocaleString()}</td>
-      <td>${Math.round(row.controller_buttons).toLocaleString()}</td>
-      <td>${Math.round(row.mouse_feet).toLocaleString()} feet</td>
+      <td style="display:${appSettings.showLeftClicks ? 'table-cell' : 'none'}">${Math.round(row.left_clicks).toLocaleString()}</td>
+      <td style="display:${appSettings.showRightClicks ? 'table-cell' : 'none'}">${Math.round(row.right_clicks).toLocaleString()}</td>
+      <td style="display:${appSettings.showMiddleClicks ? 'table-cell' : 'none'}">${Math.round(row.middle_clicks).toLocaleString()}</td>
+      <td style="display:${appSettings.showKeypresses ? 'table-cell' : 'none'}">${Math.round(row.keypresses).toLocaleString()}</td>
+      <td style="display:${appSettings.showController ? 'table-cell' : 'none'}">${Math.round(row.controller_buttons).toLocaleString()}</td>
+      <td style="display:${appSettings.showMouseMovement ? 'table-cell' : 'none'}">${Math.round(row.mouse_feet).toLocaleString()} feet</td>
     </tr>
   `,
           )
           .join("");
       }
+
+      // ─── Settings Modal Logic ────────────────────────
+      let OSStartupEnabled = false;
+
+      async function toggleStartup(enabled) {
+        try {
+          await fetch('/api/startup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled })
+          });
+        } catch (e) {
+          console.error("Failed to set startup", e);
+        }
+      }
+
+      async function loadStartupStatus() {
+        try {
+            const res = await fetchJSON('/api/startup');
+            if (res) OSStartupEnabled = res.enabled;
+        } catch (e) {}
+      }
+
+      function buildSettingsModal() {
+        const settingsList = document.getElementById('settingsList');
+        const mkToggle = (label, key, isCustom) => `
+          <div class="setting-item">
+            <span class="setting-label ${isCustom ? 'startup' : ''}">${label}</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle_${key}" ${isCustom ? (OSStartupEnabled ? 'checked' : '') : (appSettings[key] ? 'checked' : '')}>
+              <span class="slider"></span>
+            </label>
+          </div>
+        `;
+
+        settingsList.innerHTML = `
+          ${mkToggle('Run app on Windows Startup', 'OSStartup', true)}
+          ${mkToggle('Show Left Clicks', 'showLeftClicks')}
+          ${mkToggle('Show Right Clicks', 'showRightClicks')}
+          ${mkToggle('Show Middle Clicks', 'showMiddleClicks')}
+          ${mkToggle('Show Keypresses', 'showKeypresses')}
+          ${mkToggle('Show Characters', 'showCharacters')}
+          ${mkToggle('Show Mouse Movement', 'showMouseMovement')}
+          ${mkToggle('Show Controller', 'showController')}
+        `;
+
+        Object.keys(defaultSettings).forEach(key => {
+          document.getElementById(`toggle_${key}`).addEventListener('change', (e) => {
+            appSettings[key] = e.target.checked;
+            saveSettings(appSettings);
+            loadAllData();
+          });
+        });
+
+        document.getElementById('toggle_OSStartup').addEventListener('change', (e) => {
+          OSStartupEnabled = e.target.checked;
+          toggleStartup(OSStartupEnabled);
+        });
+      }
+
+      document.getElementById('openSettings').addEventListener('click', () => {
+        buildSettingsModal();
+        document.getElementById('settingsModal').classList.add('open');
+      });
+      document.getElementById('closeSettings').addEventListener('click', () => {
+        document.getElementById('settingsModal').classList.remove('open');
+      });
+      document.getElementById('settingsModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('settingsModal')) {
+          e.target.classList.remove('open');
+        }
+      });
 
       // ─── Data Fetching ───────────────────────────────
       async function fetchJSON(url) {
@@ -953,11 +1241,12 @@
 
       async function loadAllData() {
         const range = selectedRange();
-        const [totals, timeline, appDist, dailyStats] = await Promise.all([
+        const [totals, timeline, appDist, dailyStats, characters] = await Promise.all([
           fetchJSON(`/api/totals?range=${range}`),
           fetchJSON(`/api/timeline?range=${range}`),
           fetchJSON(`/api/app-distribution?range=${range}`),
           fetchJSON(`/api/daily-avg?range=${range}`),
+          fetchJSON(`/api/characters?range=${range}`),
         ]);
 
         if (totals) renderStats(totals);
@@ -968,6 +1257,7 @@
         }
         if (timeline) renderTimeline(timeline);
         if (dailyStats) renderDailyAvg(dailyStats);
+        if (characters) renderCharacters(characters);
 
         // Update timestamp
         const now = new Date();
@@ -980,6 +1270,7 @@
         .addEventListener("change", loadAllData);
 
       // ─── Init + Auto-refresh ─────────────────────────
+      loadStartupStatus();
       loadUsername();
       loadAllData();
       setInterval(loadAllData, 60_000);

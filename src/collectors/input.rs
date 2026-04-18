@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 /// Input event types we track.
 #[derive(Debug, Clone)]
 pub enum InputEvent {
-    Key,
+    Key(Option<String>),
     LeftClick,
     RightClick,
     MiddleClick,
@@ -26,6 +26,7 @@ struct HourlyCounters {
     right_clicks: AtomicI64,
     middle_clicks: AtomicI64,
     controller_buttons: AtomicI64,
+    character_counts: std::sync::Mutex<std::collections::HashMap<String, i64>>,
 }
 
 impl HourlyCounters {
@@ -36,6 +37,7 @@ impl HourlyCounters {
             right_clicks: AtomicI64::new(0),
             middle_clicks: AtomicI64::new(0),
             controller_buttons: AtomicI64::new(0),
+            character_counts: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -46,6 +48,11 @@ impl HourlyCounters {
         let mc = self.middle_clicks.swap(0, Ordering::Relaxed);
         let cb = self.controller_buttons.swap(0, Ordering::Relaxed);
         (kp, lc, rc, mc, cb)
+    }
+
+    fn reset_chars(&self) -> std::collections::HashMap<String, i64> {
+        let mut map = self.character_counts.lock().unwrap();
+        std::mem::take(&mut *map)
     }
 }
 
@@ -62,7 +69,7 @@ pub fn start_input_collector() -> mpsc::UnboundedReceiver<InputEvent> {
             tracing::info!("Starting rdev global input hook");
             if let Err(e) = listen(move |event| {
                 let input_event = match event.event_type {
-                    EventType::KeyPress(_) => Some(InputEvent::Key),
+                    EventType::KeyPress(_) => Some(InputEvent::Key(event.name.clone())),
                     EventType::ButtonPress(Button::Left) => Some(InputEvent::LeftClick),
                     EventType::ButtonPress(Button::Right) => Some(InputEvent::RightClick),
                     EventType::ButtonPress(Button::Middle) => Some(InputEvent::MiddleClick),
@@ -207,9 +214,19 @@ pub async fn process_input_events(
             }
             event = rx.recv() => {
                 match event {
-                    Some(InputEvent::Key) => {
+                    Some(InputEvent::Key(name)) => {
                         counters.keypresses.fetch_add(1, Ordering::Relaxed);
                         let _ = db.insert_input_event("key").await;
+                        if let Some(ch) = name {
+                            let ch = ch.to_uppercase();
+                            if ch.chars().count() == 1 {
+                                let c = ch.chars().next().unwrap();
+                                if c.is_ascii_graphic() {
+                                    let mut map = counters.character_counts.lock().unwrap();
+                                    *map.entry(ch).or_insert(0) += 1;
+                                }
+                            }
+                        }
                     }
                     Some(InputEvent::LeftClick) => {
                         counters.left_clicks.fetch_add(1, Ordering::Relaxed);
@@ -273,6 +290,11 @@ async fn flush_counters(db: &Database, counters: &HourlyCounters, bucket: &str) 
         let _ = db
             .upsert_hourly_stats(bucket, "controller_buttons", cb as f64)
             .await;
+    }
+
+    let char_counts = counters.reset_chars();
+    for (ch, count) in char_counts {
+        let _ = db.upsert_character_stats(bucket, &ch, count).await;
     }
 }
 

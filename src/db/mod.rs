@@ -10,6 +10,12 @@ pub struct Database {
     conn: Arc<Connection>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct CharacterStat {
+    pub character: String,
+    pub count: i64,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Clone)]
 pub struct HourlyStat {
@@ -119,6 +125,15 @@ impl Database {
                 CREATE INDEX IF NOT EXISTS idx_window_snapshots_ts ON window_snapshots(timestamp);
                 CREATE INDEX IF NOT EXISTS idx_hourly_stats_bucket ON hourly_stats(hour_bucket);
                 CREATE INDEX IF NOT EXISTS idx_daily_app_time_date ON daily_app_time(date_bucket);
+
+                CREATE TABLE IF NOT EXISTS character_stats (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hour_bucket   TEXT    NOT NULL,
+                    character     TEXT    NOT NULL,
+                    count         INTEGER DEFAULT 0,
+                    UNIQUE(hour_bucket, character)
+                );
+                CREATE INDEX IF NOT EXISTS idx_char_stats_bucket ON character_stats(hour_bucket);
                 ",
             )?;
 
@@ -469,6 +484,58 @@ impl Database {
                             middle_clicks: row.get(4)?,
                             mouse_feet: row.get(5)?,
                             controller_buttons: row.get(6)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
+    /// Upsert character stats for a given hour bucket.
+    pub async fn upsert_character_stats(
+        &self,
+        bucket: &str,
+        character: &str,
+        increment: i64,
+    ) -> Result<(), tokio_rusqlite::Error> {
+        let bucket = bucket.to_string();
+        let character = character.to_string();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO character_stats (hour_bucket, character, count)
+                     VALUES (?1, ?2, ?3)
+                     ON CONFLICT(hour_bucket, character) DO UPDATE SET
+                       count = count + ?3",
+                    params![bucket, character, increment],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Query aggregated character stats.
+    pub async fn query_character_stats(
+        &self,
+        hours_back: u32,
+    ) -> Result<Vec<CharacterStat>, tokio_rusqlite::Error> {
+        self.conn
+            .call(move |conn| {
+                let cutoff = Utc::now() - chrono::Duration::hours(hours_back as i64);
+                let cutoff_str = cutoff.format("%Y-%m-%dT%H:00").to_string();
+                let mut stmt = conn.prepare(
+                    "SELECT character, SUM(count) as total_count
+                     FROM character_stats
+                     WHERE hour_bucket >= ?1
+                     GROUP BY character
+                     ORDER BY total_count DESC",
+                )?;
+                let rows = stmt
+                    .query_map(params![cutoff_str], |row| {
+                        Ok(CharacterStat {
+                            character: row.get(0)?,
+                            count: row.get(1)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;

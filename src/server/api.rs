@@ -1,7 +1,9 @@
 use crate::db::Database;
-use axum::{extract::{Query, State}, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{extract::{Query, State}, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
 use serde::Deserialize;
 use serde_json::json;
+use winreg::enums::*;
+use winreg::RegKey;
 
 #[derive(Debug, Deserialize)]
 pub struct RangeParams {
@@ -15,6 +17,8 @@ pub fn routes(db: Database) -> Router {
         .route("/api/timeline", get(timeline))
         .route("/api/app-distribution", get(app_distribution))
         .route("/api/daily-avg", get(daily_avg))
+        .route("/api/characters", get(characters))
+        .route("/api/startup", get(get_startup).post(set_startup))
         .with_state(db)
 }
 
@@ -124,5 +128,58 @@ async fn daily_avg(
             )
                 .into_response()
         }
+    }
+}
+
+async fn characters(
+    State(db): State<Database>,
+    Query(params): Query<RangeParams>,
+) -> impl IntoResponse {
+    let range = parse_range(&params);
+    let hours_back = range_to_hours(range);
+    match db.query_character_stats(hours_back).await {
+        Ok(data) => Json(json!(data)).into_response(),
+        Err(e) => {
+            tracing::error!("Error querying characters: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn get_startup() -> impl IntoResponse {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+    let enabled = if let Ok(run) = run {
+        let val: Result<String, _> = run.get_value("StealthMon");
+        val.is_ok()
+    } else {
+        false
+    };
+    Json(json!({ "enabled": enabled })).into_response()
+}
+
+#[derive(Deserialize)]
+struct StartupPayload {
+    enabled: bool,
+}
+
+async fn set_startup(Json(payload): Json<StartupPayload>) -> impl IntoResponse {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run = hkcu.open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_SET_VALUE);
+    if let Ok(run) = run {
+        if payload.enabled {
+            if let Ok(exe_path) = std::env::current_exe() {
+                let _ = run.set_value("StealthMon", &exe_path.to_string_lossy().to_string());
+            }
+        } else {
+            let _ = run.delete_value("StealthMon");
+        }
+        Json(json!({ "success": true })).into_response()
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to open registry"}))).into_response()
     }
 }
