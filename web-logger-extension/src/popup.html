@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web Logger</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup">
+    <main>
+      <h1>Web Logger</h1>
+      <div
+        class="incognito-indicator"
+        id="incognitoIndicator"
+        title="Incognito mode access"
+      ></div>
+      <p id="summary">Loading...</p>
+      <div class="button-row">
+        <button id="openDashboard" type="button">Open log</button>
+        <button id="exportMarkdown" type="button">Export MD</button>
+      </div>
+    </main>
+    <script src="shared-db.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

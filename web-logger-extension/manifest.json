@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Web Logger",
+  "version": "0.2.1",
+  "description": "Logs visited websites, normal/incognito mode, timestamps, and loaded-page screenshots for vault-friendly export.",
+  "incognito": "spanning",
+  "icons": {
+    "128": "icon.png"
+  },
+  "permissions": [
+    "downloads",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Web Logger",
+    "default_icon": "icon.png"
+  },
+  "options_page": "src/dashboard.html"
+}
