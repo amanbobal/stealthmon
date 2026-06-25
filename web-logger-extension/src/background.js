@@ -2,7 +2,12 @@ importScripts("shared-db.js");
 
 const CAPTURE_DELAY_MS = 2500;
 const DUPLICATE_WINDOW_MS = 2000;
+const STEALTHMON_SYNC_URL = "http://127.0.0.1:9521/api/web-history";
+const STEALTHMON_STATUS_URL = "http://127.0.0.1:9521/api/web-history/status";
+const SYNC_BATCH_SIZE = 25;
 const recentNavigationKeys = new Map();
+let syncTimer = null;
+let syncInFlight = false;
 
 function isLoggableUrl(url) {
   if (!url) return false;
@@ -67,6 +72,7 @@ async function logCompletedVisit(details, sourceEvent) {
     sourceEvent
   });
 
+  queueStealthMonSync();
   scheduleScreenshotCapture(visit.id, details.tabId, details.windowId, details.url);
 }
 
@@ -84,6 +90,7 @@ async function captureScreenshotForVisit(visitId, tabId, windowId, expectedUrl) 
     await WebLogDB.updateVisit(visitId, {
       screenshotStatus: `failed_tab_unavailable: ${error.message}`
     });
+    queueStealthMonSync();
     return;
   }
 
@@ -91,6 +98,7 @@ async function captureScreenshotForVisit(visitId, tabId, windowId, expectedUrl) 
     await WebLogDB.updateVisit(visitId, {
       screenshotStatus: "skipped_tab_changed_before_capture"
     });
+    queueStealthMonSync();
     return;
   }
 
@@ -98,6 +106,7 @@ async function captureScreenshotForVisit(visitId, tabId, windowId, expectedUrl) 
     await WebLogDB.updateVisit(visitId, {
       screenshotStatus: "pending_tab_not_active"
     });
+    queueStealthMonSync();
     return;
   }
 
@@ -112,10 +121,91 @@ async function captureScreenshotForVisit(visitId, tabId, windowId, expectedUrl) 
       screenshotCapturedAtMs: Date.now(),
       screenshotStatus: dataUri ? "captured" : "failed_empty_capture"
     });
+    queueStealthMonSync();
   } catch (error) {
     await WebLogDB.updateVisit(visitId, {
       screenshotStatus: `failed_capture: ${error.message}`
     });
+    queueStealthMonSync();
+  }
+}
+
+function queueStealthMonSync(delayMs = 1000) {
+  if (syncTimer) return;
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    syncVisitsToStealthMon();
+  }, delayMs);
+}
+
+function setStealthMonStatus(status) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(
+      {
+        stealthmonSyncStatus: {
+          checkedAtMs: Date.now(),
+          ...status
+        }
+      },
+      resolve
+    );
+  });
+}
+
+async function pingStealthMon(unsyncedCount = 0) {
+  const response = await fetch(STEALTHMON_STATUS_URL, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`StealthMon status failed: HTTP ${response.status}`);
+  }
+
+  const status = await response.json();
+  await setStealthMonStatus({
+    connected: true,
+    lastError: "",
+    lastSuccessAtMs: Date.now(),
+    totalVisits: status.total_visits || 0,
+    latestVisitAtMs: status.latest_visit_at_ms || null,
+    unsyncedCount
+  });
+}
+
+async function syncVisitsToStealthMon() {
+  if (syncInFlight) return;
+  syncInFlight = true;
+
+  try {
+    const unsynced = await WebLogDB.listUnsyncedVisits();
+    if (unsynced.length === 0) {
+      await pingStealthMon(0);
+      return;
+    }
+
+    for (let i = 0; i < unsynced.length; i += SYNC_BATCH_SIZE) {
+      const batch = unsynced.slice(i, i + SYNC_BATCH_SIZE);
+      const syncStartedAt = Date.now();
+      const response = await fetch(STEALTHMON_SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visits: batch })
+      });
+
+      if (!response.ok) {
+        throw new Error(`StealthMon sync failed: HTTP ${response.status}`);
+      }
+
+      await WebLogDB.markVisitsSynced(batch.map((visit) => visit.id), syncStartedAt);
+    }
+    await pingStealthMon(0);
+  } catch (error) {
+    const unsynced = await WebLogDB.listUnsyncedVisits().catch(() => []);
+    await setStealthMonStatus({
+      connected: false,
+      lastError: error.message,
+      unsyncedCount: unsynced.length
+    });
+    console.warn(error.message);
+  } finally {
+    syncInFlight = false;
   }
 }
 
@@ -152,3 +242,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     retryPendingCaptureForActiveTab(tabId);
   }
 });
+
+chrome.runtime.onInstalled.addListener(() => {
+  queueStealthMonSync(5000);
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  queueStealthMonSync(5000);
+});
+
+chrome.alarms.create("stealthmon-sync", { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "stealthmon-sync") {
+    queueStealthMonSync();
+  }
+});
+
+queueStealthMonSync(5000);

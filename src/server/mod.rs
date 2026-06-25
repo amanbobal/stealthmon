@@ -2,17 +2,25 @@ pub mod api;
 pub mod dashboard;
 
 use crate::db::Database;
+use crate::updater::{auto_check_loop, UpdateManager};
 use axum::Router;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
 /// Start the axum HTTP server on 127.0.0.1:9521.
-pub async fn start_server(db: Database, cancel: CancellationToken) {
+pub async fn start_server(db: Database, data_dir: PathBuf, cancel: CancellationToken) {
+    let updater = UpdateManager::new(data_dir);
+    let updater_task = updater.clone();
+    let cancel_updates = cancel.clone();
+    tokio::spawn(async move {
+        auto_check_loop(updater_task, cancel_updates).await;
+    });
+
     let app = Router::new()
         .merge(dashboard::routes())
-        .merge(api::routes(db))
+        .merge(api::routes(db, updater))
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9521));

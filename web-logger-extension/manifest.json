@@ -1,14 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Web Logger",
-  "version": "0.2.1",
+  "version": "0.2.67",
   "description": "Logs visited websites, normal/incognito mode, timestamps, and loaded-page screenshots for vault-friendly export.",
   "incognito": "spanning",
   "icons": {
     "128": "icon.png"
   },
   "permissions": [
+    "alarms",
     "downloads",
+    "storage",
     "tabs",
     "webNavigation"
   ],

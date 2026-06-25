@@ -1,6 +1,6 @@
 [package]
 name = "stealthmon"
-version = "0.1.0"
+version = "0.3.33"
 edition = "2021"
 description = "A silent background activity monitor for Windows with a web dashboard"
 
@@ -14,8 +14,10 @@ axum           = "0.7"
 tower-http     = { version = "0.5", features = ["cors"] }
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
+semver         = "1"
 chrono         = { version = "0.4", features = ["serde"] }
 tokio-rusqlite = "0.5"
+reqwest        = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tray-icon      = "0.14"
 rust-embed     = "8"
 tracing        = "0.1"

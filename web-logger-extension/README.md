@@ -44,3 +44,9 @@ Screenshot capture is also browser-limited:
    - **CSV** for spreadsheet-style review
 
 Exports are named with the selected date range and mode, for example `vault-web-log-2026-06-02_to_2026-06-15-all-modes.jsonl`. Use `id` as the dedupe key in any import workflow. Re-exporting the same 14-day data produces the same filename pattern and the same record IDs, so downstream imports can overwrite, upsert, or skip duplicates without manual cleanup.
+
+Large exports are split into numbered files such as `vault-web-log-2026-06-02_to_2026-06-15-all-modes.part-001.jsonl`. This avoids crashing the extension dashboard when screenshots make the export too large for a single in-memory file.
+
+## Restore an Export
+
+Open the log and click **Import** to restore a previous `.jsonl`, `.csv`, or `.md` export. JSONL is the recommended backup format because it preserves the full visit record. CSV and Markdown imports are supported for the existing export shapes, but they can only restore the fields those formats contain. Imported rows are deduped by `id`: new records are added and existing records with the same `id` are updated.

@@ -69,56 +69,6 @@
         align-items: center;
       }
 
-      .welcome-section {
-        background: linear-gradient(
-          135deg,
-          rgba(78, 196, 255, 0.12) 0%,
-          rgba(72, 232, 199, 0.12) 100%
-        );
-        border: 1px solid rgba(109, 213, 255, 0.16);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 20px;
-      }
-
-      .welcome-emoji {
-        font-size: 3rem;
-        animation: wave 2s ease-in-out infinite;
-      }
-
-      @keyframes wave {
-        0%,
-        100% {
-          transform: rotate(0deg);
-        }
-        25% {
-          transform: rotate(20deg);
-        }
-        75% {
-          transform: rotate(-20deg);
-        }
-      }
-
-      .welcome-text {
-        flex: 1;
-      }
-
-      .welcome-text h2 {
-        color: #d7ebff;
-        font-size: 1.6rem;
-        margin-bottom: 6px;
-        font-weight: 600;
-      }
-
-      .welcome-text p {
-        color: #b5d4f1;
-        font-size: 1rem;
-        margin: 0;
-      }
-
       .range-row {
         display: flex;
         justify-content: flex-end;
@@ -171,7 +121,7 @@
 
       .meta-row {
         display: grid;
-        grid-template-columns: repeat(3, minmax(180px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 16px;
         margin-bottom: 30px;
       }
@@ -200,10 +150,40 @@
         color: #eff7ff;
       }
 
+      .meta-card .value.website {
+        font-size: 1.35rem;
+        overflow-wrap: anywhere;
+        line-height: 1.2;
+      }
+
       .meta-card .hint {
         color: #c7e3ff;
         font-size: 0.95rem;
         line-height: 1.45;
+      }
+
+      .connection-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .connection-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #8aa5b8;
+        box-shadow: 0 0 0 4px rgba(138, 165, 184, 0.12);
+      }
+
+      .connection-dot.connected {
+        background: #48e8c7;
+        box-shadow: 0 0 0 4px rgba(72, 232, 199, 0.16);
+      }
+
+      .connection-dot.disconnected {
+        background: #ff7e7e;
+        box-shadow: 0 0 0 4px rgba(255, 126, 126, 0.16);
       }
 
       /* Charts row */
@@ -428,6 +408,19 @@
       .setting-item:last-child { border-bottom: none; }
       .setting-label { font-size: 0.95rem; color: #b5d4f1; }
       .setting-label.startup { color: #f9d17f; font-weight: 600; }
+      .setting-detail { color: #8fb2d6; font-size: 0.82rem; margin-top: 4px; }
+      .setting-actions { display: flex; gap: 8px; align-items: center; }
+      .settings-action-btn {
+        border: 1px solid rgba(109, 213, 255, 0.24);
+        border-radius: 8px;
+        background: rgba(20, 36, 52, 0.95);
+        color: #eaf4ff;
+        cursor: pointer;
+        font-size: 0.82rem;
+        padding: 8px 10px;
+      }
+      .settings-action-btn:hover { background: rgba(31, 54, 76, 0.98); }
+      .settings-action-btn:disabled { cursor: not-allowed; opacity: 0.55; }
       /* Toggle Switch */
       .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
       .switch input { opacity: 0; width: 0; height: 0; }
@@ -480,14 +473,6 @@
         <span class="last-updated" id="lastUpdated">loading...</span>
       </div>
 
-      <div class="welcome-section">
-        <div class="welcome-emoji">👋</div>
-        <div class="welcome-text">
-          <h2>Welcome, <span id="usernameDisplay">loading...</span>!</h2>
-          <p>Here's your activity snapshot — keep grinding! ✨</p>
-        </div>
-      </div>
-
       <div class="range-row">
         <label for="rangeSelect">Show data for:</label>
         <select id="rangeSelect">
@@ -502,7 +487,7 @@
         <div class="meta-card">
           <div class="label">active apps</div>
           <div class="value" id="metaActiveApps">—</div>
-          <div class="hint">Apps seen in the last 24 hours.</div>
+          <div class="hint">Apps seen in the selected range.</div>
         </div>
         <div class="meta-card">
           <div class="label">top app</div>
@@ -513,6 +498,19 @@
           <div class="label">favorite key</div>
           <div class="value" id="metaFavoriteKey">—</div>
           <div class="hint">Your most abused character.</div>
+        </div>
+        <div class="meta-card">
+          <div class="label">most visited website</div>
+          <div class="value website" id="metaMostVisitedWebsite">—</div>
+          <div class="hint" id="metaMostVisitedWebsiteHint">Top host in the selected range.</div>
+        </div>
+        <div class="meta-card">
+          <div class="label">web log api</div>
+          <div class="value connection-value">
+            <span class="connection-dot" id="metaWebLogDot"></span>
+            <span id="metaWebLogApi">—</span>
+          </div>
+          <div class="hint" id="metaWebLogApiHint">Checking local API.</div>
         </div>
       </div>
 
@@ -646,6 +644,18 @@
         if (num >= 1_000)
           return (num / 1_000).toFixed(num >= 10_000 ? 0 : 1) + "k";
         return Math.round(num).toLocaleString();
+      }
+
+      function formatRelativeTime(ms) {
+        if (!ms) return "not yet";
+        const seconds = Math.max(1, Math.round((Date.now() - ms) / 1000));
+        if (seconds < 60) return `${seconds}s ago`;
+        const minutes = Math.round(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.round(hours / 24);
+        return `${days}d ago`;
       }
 
       // ─── Chart.js global defaults ────────────────────
@@ -1107,6 +1117,43 @@
         document.getElementById("metaTopApp").textContent = topApp;
       }
 
+      function renderMostVisitedWebsite(site) {
+        const valueEl = document.getElementById("metaMostVisitedWebsite");
+        const hintEl = document.getElementById("metaMostVisitedWebsiteHint");
+        if (!site || !site.host) {
+          valueEl.textContent = "—";
+          hintEl.textContent = "No website visits in this range.";
+          return;
+        }
+
+        const visits = Number(site.visits || 0);
+        valueEl.textContent = site.host;
+        hintEl.textContent = `${visits.toLocaleString()} ${visits === 1 ? "visit" : "visits"} in ${rangeLabels[selectedRange()].toLowerCase()}.`;
+      }
+
+      function renderWebLogStatus(status) {
+        const dotEl = document.getElementById("metaWebLogDot");
+        const valueEl = document.getElementById("metaWebLogApi");
+        const hintEl = document.getElementById("metaWebLogApiHint");
+        const connected = Boolean(status && status.api_connected);
+
+        dotEl.classList.toggle("connected", connected);
+        dotEl.classList.toggle("disconnected", !connected);
+        valueEl.textContent = connected ? "connected" : "offline";
+
+        if (!connected) {
+          hintEl.textContent = "Extension sync has not reached this app.";
+          return;
+        }
+
+        const total = Number(status.total_visits || 0);
+        if (status.latest_visit_at_ms) {
+          hintEl.textContent = `${total.toLocaleString()} visits. Latest ${formatRelativeTime(status.latest_visit_at_ms)}.`;
+        } else {
+          hintEl.textContent = "API is listening. No visits imported yet.";
+        }
+      }
+
       // ─── Daily Average Table ─────────────────────────
       function renderDailyAvg(data) {
         // Toggle visibility of columns
@@ -1142,6 +1189,7 @@
 
       // ─── Settings Modal Logic ────────────────────────
       let OSStartupEnabled = false;
+      let latestUpdateStatus = null;
 
       async function toggleStartup(enabled) {
         try {
@@ -1160,6 +1208,49 @@
             const res = await fetchJSON('/api/startup');
             if (res) OSStartupEnabled = res.enabled;
         } catch (e) {}
+      }
+
+      function renderUpdateSettings(status) {
+        latestUpdateStatus = status || latestUpdateStatus;
+        const statusEl = document.getElementById('updateStatusText');
+        const checkBtn = document.getElementById('checkUpdateBtn');
+        const installBtn = document.getElementById('installUpdateBtn');
+        if (!statusEl || !checkBtn || !installBtn) return;
+
+        const updateStatus = latestUpdateStatus;
+        if (!updateStatus) {
+          statusEl.textContent = 'Current version: checking...';
+          installBtn.disabled = true;
+          return;
+        }
+
+        const latest = updateStatus.latest_version || 'unknown';
+        const current = updateStatus.current_version || 'unknown';
+        if (updateStatus.status === 'checking') {
+          statusEl.textContent = `Current ${current}. Checking...`;
+        } else if (updateStatus.error) {
+          statusEl.textContent = `Current ${current}. ${updateStatus.error}`;
+        } else if (updateStatus.update_available) {
+          statusEl.textContent = `Current ${current}. Update ${latest} available.`;
+        } else {
+          statusEl.textContent = `Current ${current}. Up to date.`;
+        }
+
+        checkBtn.disabled = updateStatus.update_in_progress;
+        installBtn.disabled = !updateStatus.update_available || updateStatus.update_in_progress;
+        installBtn.textContent = updateStatus.update_in_progress ? 'Installing' : 'Install';
+      }
+
+      async function loadUpdateStatus(runCheck = false) {
+        const status = await fetchJSON(runCheck ? '/api/update/check' : '/api/update/status', {
+          method: runCheck ? 'POST' : 'GET',
+        });
+        renderUpdateSettings(status);
+      }
+
+      async function installUpdate() {
+        const status = await fetchJSON('/api/update/install', { method: 'POST' });
+        renderUpdateSettings(status);
       }
 
       function buildSettingsModal() {
@@ -1183,6 +1274,16 @@
           ${mkToggle('Show Characters', 'showCharacters')}
           ${mkToggle('Show Mouse Movement', 'showMouseMovement')}
           ${mkToggle('Show Controller', 'showController')}
+          <div class="setting-item">
+            <div>
+              <span class="setting-label startup">Updates</span>
+              <div class="setting-detail" id="updateStatusText">Current version: checking...</div>
+            </div>
+            <div class="setting-actions">
+              <button class="settings-action-btn" id="checkUpdateBtn" type="button">Check</button>
+              <button class="settings-action-btn" id="installUpdateBtn" type="button" disabled>Install</button>
+            </div>
+          </div>
         `;
 
         Object.keys(defaultSettings).forEach(key => {
@@ -1197,6 +1298,10 @@
           OSStartupEnabled = e.target.checked;
           toggleStartup(OSStartupEnabled);
         });
+
+        document.getElementById('checkUpdateBtn').addEventListener('click', () => loadUpdateStatus(true));
+        document.getElementById('installUpdateBtn').addEventListener('click', installUpdate);
+        loadUpdateStatus();
       }
 
       document.getElementById('openSettings').addEventListener('click', () => {
@@ -1213,9 +1318,9 @@
       });
 
       // ─── Data Fetching ───────────────────────────────
-      async function fetchJSON(url) {
+      async function fetchJSON(url, options = {}) {
         try {
-          const res = await fetch(url);
+          const res = await fetch(url, options);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return await res.json();
         } catch (e) {
@@ -1224,37 +1329,28 @@
         }
       }
 
-      async function loadUsername() {
-        try {
-          const res = await fetchJSON("/api/username");
-          if (res && res.username) {
-            document.getElementById("usernameDisplay").textContent =
-              res.username;
-          } else {
-            document.getElementById("usernameDisplay").textContent = "Pardon";
-          }
-        } catch (e) {
-          console.error("Failed to load username:", e);
-          document.getElementById("usernameDisplay").textContent = "Pardon";
-        }
-      }
-
       async function loadAllData() {
         const range = selectedRange();
-        const [totals, timeline, appDist, dailyStats, characters] = await Promise.all([
+        const [totals, timeline, appDist, dailyStats, characters, mostVisited, webLogStatus] = await Promise.all([
           fetchJSON(`/api/totals?range=${range}`),
           fetchJSON(`/api/timeline?range=${range}`),
           fetchJSON(`/api/app-distribution?range=${range}`),
           fetchJSON(`/api/daily-avg?range=${range}`),
           fetchJSON(`/api/characters?range=${range}`),
+          fetchJSON(`/api/web-history/most-visited?range=${range}`),
+          fetchJSON('/api/web-history/status'),
         ]);
 
         if (totals) renderStats(totals);
-        if (appDist && appDist.length > 0) {
+        if (appDist) {
           renderMeta(appDist);
-          renderDonut(appDist);
-          renderRadar(appDist);
+          if (appDist.length > 0) {
+            renderDonut(appDist);
+            renderRadar(appDist);
+          }
         }
+        renderMostVisitedWebsite(mostVisited);
+        renderWebLogStatus(webLogStatus);
         if (timeline) renderTimeline(timeline);
         if (dailyStats) renderDailyAvg(dailyStats);
         if (characters) renderCharacters(characters);
@@ -1271,7 +1367,7 @@
 
       // ─── Init + Auto-refresh ─────────────────────────
       loadStartupStatus();
-      loadUsername();
+      loadUpdateStatus();
       loadAllData();
       setInterval(loadAllData, 60_000);
     </script>

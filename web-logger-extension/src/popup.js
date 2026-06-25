@@ -23,6 +23,7 @@
   });
 
   const summary = document.querySelector("#summary");
+  const syncStatus = document.querySelector("#syncStatus");
   const visits = await WebLogDB.listVisits();
   const captured = visits.filter(
     (visit) => visit.screenshotStatus === "captured",
@@ -30,6 +31,35 @@
   const incognito = visits.filter((visit) => visit.incognito).length;
 
   summary.textContent = `${visits.length} visits logged. ${captured} screenshots captured. ${incognito} incognito visits.`;
+
+  function formatRelativeTime(ms) {
+    if (!ms) return "not yet";
+    const seconds = Math.max(1, Math.round((Date.now() - ms) / 1000));
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    return `${hours}h ago`;
+  }
+
+  function loadSyncStatus() {
+    chrome.storage.local.get("stealthmonSyncStatus", (result) => {
+      const status = result.stealthmonSyncStatus || {};
+      syncStatus.classList.toggle("connected", Boolean(status.connected));
+      syncStatus.classList.toggle("disconnected", status.connected === false);
+
+      if (status.connected) {
+        syncStatus.textContent = `StealthMon connected. Last sync ${formatRelativeTime(status.lastSuccessAtMs)}.`;
+      } else if (status.lastError) {
+        syncStatus.textContent = `StealthMon disconnected. ${status.unsyncedCount || 0} unsynced.`;
+        syncStatus.title = status.lastError;
+      } else {
+        syncStatus.textContent = "StealthMon connection pending.";
+      }
+    });
+  }
+
+  loadSyncStatus();
 
   document.querySelector("#openDashboard").addEventListener("click", () => {
     chrome.runtime.openOptionsPage();

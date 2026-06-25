@@ -3,6 +3,7 @@
 mod collectors;
 mod db;
 mod server;
+mod updater;
 
 use db::Database;
 use std::path::PathBuf;
@@ -151,9 +152,10 @@ fn main() {
     // Spawn HTTP server (with panic catching)
     let db_server = db.clone();
     let cancel_server = cancel.clone();
+    let data_dir_server = data_dir.clone();
     runtime.spawn(async move {
         tracing::info!("HTTP server task starting");
-        server::start_server(db_server, cancel_server).await;
+        server::start_server(db_server, data_dir_server, cancel_server).await;
         tracing::info!("HTTP server task ended");
     });
 

@@ -148,7 +148,8 @@
       windowId: input.windowId ?? null,
       sourceEvent: input.sourceEvent || "unknown",
       createdAtMs: input.createdAtMs || Date.now(),
-      updatedAtMs: Date.now()
+      updatedAtMs: input.updatedAtMs || Date.now(),
+      syncedAtMs: input.syncedAtMs || null
     };
 
     visit.searchText = buildSearchText(visit);
@@ -162,9 +163,98 @@
     });
   }
 
+  async function normalizeImportedVisit(input) {
+    const hasVisitedAtMs = input.visitedAtMs !== undefined && input.visitedAtMs !== null && input.visitedAtMs !== "";
+    const visitedAtMs = hasVisitedAtMs && Number.isFinite(Number(input.visitedAtMs))
+      ? Number(input.visitedAtMs)
+      : dateTimeToMs(input.date, input.time, input.dateTime);
+    const incognito = typeof input.incognito === "boolean"
+      ? input.incognito
+      : String(input.context || "").toLowerCase() === "incognito";
+    const visit = await makeVisit({
+      ...input,
+      visitedAtMs: visitedAtMs || Date.now(),
+      incognito,
+      screenshotStatus: input.screenshotStatus || (input.screenshotDataUri ? "captured" : "missing"),
+      sourceEvent: input.sourceEvent || "import"
+    });
+
+    if (input.timezone) visit.timezone = input.timezone;
+    if (input.date && input.time && !visitedAtMs) {
+      visit.date = input.date;
+      visit.time = input.time;
+      visit.dateTime = input.dateTime || `${input.date} ${input.time}`;
+    }
+    visit.updatedAtMs = Date.now();
+    visit.syncedAtMs = null;
+    visit.searchText = buildSearchText(visit);
+    return visit;
+  }
+
+  function dateTimeToMs(date, time, dateTime) {
+    const candidates = [];
+    if (date && time) candidates.push(`${date}T${time}`);
+    if (dateTime) candidates.push(String(dateTime).replace(" ", "T"));
+    if (date) candidates.push(`${date}T00:00:00`);
+
+    for (const candidate of candidates) {
+      const parsed = new Date(candidate).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return null;
+  }
+
   async function addVisit(input) {
     const visit = await makeVisit(input);
     return putVisit(visit);
+  }
+
+  async function importVisits(inputs) {
+    const result = {
+      total: inputs.length,
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      errors: []
+    };
+
+    const visits = [];
+    const seenIds = new Set();
+    for (let index = 0; index < inputs.length; index += 1) {
+      try {
+        const input = inputs[index];
+        if (!input || !input.url) {
+          result.skipped += 1;
+          result.errors.push(`Row ${index + 1}: missing url`);
+          continue;
+        }
+
+        const visit = await normalizeImportedVisit(input);
+        if (seenIds.has(visit.id)) {
+          result.skipped += 1;
+          result.errors.push(`Row ${index + 1}: duplicate id in import file`);
+          continue;
+        }
+
+        seenIds.add(visit.id);
+        visits.push(visit);
+      } catch (error) {
+        result.failed += 1;
+        result.errors.push(`Row ${index + 1}: ${error.message}`);
+      }
+    }
+
+    await withStore("readwrite", async (store) => {
+      for (const visit of visits) {
+        const existing = await requestToPromise(store.get(visit.id));
+        await requestToPromise(store.put(visit));
+        if (existing) result.updated += 1;
+        else result.added += 1;
+      }
+    });
+
+    return result;
   }
 
   async function updateVisit(id, patch) {
@@ -179,6 +269,9 @@
         ...patch,
         updatedAtMs: Date.now()
       };
+      if (!Object.prototype.hasOwnProperty.call(patch, "syncedAtMs")) {
+        next.syncedAtMs = null;
+      }
       next.searchText = buildSearchText(next);
       await requestToPromise(store.put(next));
       return next;
@@ -220,6 +313,25 @@
       .slice(0, 5);
   }
 
+  async function listUnsyncedVisits() {
+    const visits = await listVisits();
+    return visits.filter((visit) => !visit.syncedAtMs || visit.updatedAtMs > visit.syncedAtMs);
+  }
+
+  async function markVisitsSynced(ids, syncedAtMs) {
+    const idSet = new Set(ids);
+    return withStore("readwrite", async (store) => {
+      const visits = await requestToPromise(store.getAll());
+      for (const visit of visits) {
+        if (!idSet.has(visit.id)) continue;
+        visit.syncedAtMs = syncedAtMs;
+        visit.searchText = buildSearchText(visit);
+        await requestToPromise(store.put(visit));
+      }
+      return ids.length;
+    });
+  }
+
   async function clearAllVisits() {
     return withStore("readwrite", (store) => requestToPromise(store.clear()));
   }
@@ -230,7 +342,10 @@
     findPendingCapturesForTab,
     getVisit,
     hostFromUrl,
+    importVisits,
     listVisits,
+    listUnsyncedVisits,
+    markVisitsSynced,
     makeVisit,
     putVisit,
     simpleDateParts,

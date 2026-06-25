@@ -1,5 +1,13 @@
-use crate::db::Database;
-use axum::{extract::{Query, State}, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
+use crate::db::{Database, WebHistoryVisit};
+use crate::updater::UpdateManager;
+use axum::{
+    extract::{DefaultBodyLimit, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+    Extension,
+    Json, Router,
+};
 use serde::Deserialize;
 use serde_json::json;
 use winreg::enums::*;
@@ -10,7 +18,14 @@ pub struct RangeParams {
     pub range: Option<String>,
 }
 
-pub fn routes(db: Database) -> Router {
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum WebHistoryPayload {
+    Wrapped { visits: Vec<WebHistoryVisit> },
+    Visits(Vec<WebHistoryVisit>),
+}
+
+pub fn routes(db: Database, updater: UpdateManager) -> Router {
     Router::new()
         .route("/api/username", get(get_username))
         .route("/api/totals", get(totals))
@@ -18,13 +33,20 @@ pub fn routes(db: Database) -> Router {
         .route("/api/app-distribution", get(app_distribution))
         .route("/api/daily-avg", get(daily_avg))
         .route("/api/characters", get(characters))
+        .route("/api/web-history", post(ingest_web_history))
+        .route("/api/web-history/most-visited", get(most_visited_website))
+        .route("/api/web-history/status", get(web_history_status))
+        .route("/api/update/status", get(update_status))
+        .route("/api/update/check", post(update_check))
+        .route("/api/update/install", post(update_install))
         .route("/api/startup", get(get_startup).post(set_startup))
+        .layer(Extension(updater))
+        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
         .with_state(db)
 }
 
 async fn get_username() -> impl IntoResponse {
-    let username = std::env::var("USERNAME")
-        .unwrap_or_else(|_| "Pardon".to_string());
+    let username = std::env::var("USERNAME").unwrap_or_else(|_| "Pardon".to_string());
     Json(json!({ "username": username })).into_response()
 }
 
@@ -150,6 +172,80 @@ async fn characters(
     }
 }
 
+async fn ingest_web_history(
+    State(db): State<Database>,
+    Json(payload): Json<WebHistoryPayload>,
+) -> impl IntoResponse {
+    let visits = match payload {
+        WebHistoryPayload::Wrapped { visits } => visits,
+        WebHistoryPayload::Visits(visits) => visits,
+    };
+
+    match db.upsert_web_history(visits).await {
+        Ok(imported) => Json(json!({ "success": true, "imported": imported })).into_response(),
+        Err(e) => {
+            tracing::error!("Error ingesting web history: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn most_visited_website(
+    State(db): State<Database>,
+    Query(params): Query<RangeParams>,
+) -> impl IntoResponse {
+    let range = parse_range(&params);
+    let hours_back = range_to_hours(range);
+    match db.query_most_visited_website(hours_back).await {
+        Ok(data) => Json(json!(data)).into_response(),
+        Err(e) => {
+            tracing::error!("Error querying most visited website: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn web_history_status(State(db): State<Database>) -> impl IntoResponse {
+    match db.query_web_history_status().await {
+        Ok(data) => Json(json!(data)).into_response(),
+        Err(e) => {
+            tracing::error!("Error querying web history status: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn update_status(Extension(updater): Extension<UpdateManager>) -> impl IntoResponse {
+    Json(json!(updater.status().await)).into_response()
+}
+
+async fn update_check(Extension(updater): Extension<UpdateManager>) -> impl IntoResponse {
+    Json(json!(updater.check_for_updates().await)).into_response()
+}
+
+async fn update_install(Extension(updater): Extension<UpdateManager>) -> impl IntoResponse {
+    match updater.install_update().await {
+        Ok(status) => Json(json!(status)).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
 async fn get_startup() -> impl IntoResponse {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let run = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
@@ -169,7 +265,10 @@ struct StartupPayload {
 
 async fn set_startup(Json(payload): Json<StartupPayload>) -> impl IntoResponse {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let run = hkcu.open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_SET_VALUE);
+    let run = hkcu.open_subkey_with_flags(
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        KEY_SET_VALUE,
+    );
     if let Ok(run) = run {
         if payload.enabled {
             if let Ok(exe_path) = std::env::current_exe() {
@@ -180,6 +279,10 @@ async fn set_startup(Json(payload): Json<StartupPayload>) -> impl IntoResponse {
         }
         Json(json!({ "success": true })).into_response()
     } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to open registry"}))).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to open registry"})),
+        )
+            .into_response()
     }
 }

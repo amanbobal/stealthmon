@@ -1,7 +1,10 @@
 use chrono::Utc;
-use rusqlite::params;
-use serde::Serialize;
-use std::sync::Arc;
+use rusqlite::{params, Connection as SqliteConnection};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use tokio_rusqlite::Connection;
 
 /// Async database wrapper for all activity monitor operations.
@@ -66,6 +69,146 @@ pub struct TimelinePoint {
     pub middle_clicks: i64,
     pub mouse_feet: f64,
     pub controller_buttons: i64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WebHistoryVisit {
+    pub id: Option<String>,
+    pub url: String,
+    pub normalized_url: Option<String>,
+    pub host: Option<String>,
+    pub title: Option<String>,
+    pub visited_at_ms: Option<i64>,
+    pub date: Option<String>,
+    pub time: Option<String>,
+    pub date_time: Option<String>,
+    pub timezone: Option<String>,
+    pub incognito: Option<bool>,
+    pub context: Option<String>,
+    pub screenshot_data_uri: Option<String>,
+    pub screenshot_mime: Option<String>,
+    pub screenshot_captured_at_ms: Option<i64>,
+    pub screenshot_status: Option<String>,
+    pub tab_id: Option<i64>,
+    pub window_id: Option<i64>,
+    pub source_event: Option<String>,
+    pub created_at_ms: Option<i64>,
+    pub updated_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MostVisitedWebsite {
+    pub host: String,
+    pub visits: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct WebHistoryStatus {
+    pub api_connected: bool,
+    pub total_visits: i64,
+    pub latest_visit_at_ms: Option<i64>,
+}
+
+fn host_from_url(url: &str) -> String {
+    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .split('@')
+        .last()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase()
+}
+
+fn display_host(host: &str) -> String {
+    let host = host.trim().trim_end_matches('.').to_lowercase();
+    host.strip_prefix("www.").unwrap_or(&host).to_string()
+}
+
+fn normalize_timestamp_ms(timestamp: i64) -> i64 {
+    if timestamp > 0 && timestamp < 100_000_000_000 {
+        timestamp * 1000
+    } else {
+        timestamp
+    }
+}
+
+fn table_columns(conn: &SqliteConnection, table: &str) -> rusqlite::Result<HashSet<String>> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<HashSet<_>, _>>()?;
+    Ok(columns)
+}
+
+fn add_column_if_missing(
+    conn: &SqliteConnection,
+    columns: &mut HashSet<String>,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> rusqlite::Result<()> {
+    if !columns.contains(column) {
+        conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, definition),
+            [],
+        )?;
+        columns.insert(column.to_string());
+    }
+    Ok(())
+}
+
+fn ensure_web_history_compat(conn: &SqliteConnection) -> rusqlite::Result<()> {
+    let mut columns = table_columns(conn, "web_history")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "id", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "url", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "normalized_url", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "host", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "title", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "visited_at_ms", "INTEGER")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "date", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "time", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "date_time", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "timezone", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "incognito", "INTEGER DEFAULT 0")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "context", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "screenshot_data_uri", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "screenshot_mime", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        &mut columns,
+        "web_history",
+        "screenshot_captured_at_ms",
+        "INTEGER",
+    )?;
+    add_column_if_missing(conn, &mut columns, "web_history", "screenshot_status", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "tab_id", "INTEGER")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "window_id", "INTEGER")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "source_event", "TEXT")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "created_at_ms", "INTEGER")?;
+    add_column_if_missing(conn, &mut columns, "web_history", "updated_at_ms", "INTEGER")?;
+
+    Ok(())
+}
+
+fn coalesce_existing_column(columns: &HashSet<String>, candidates: &[&str]) -> String {
+    let available = candidates
+        .iter()
+        .filter(|column| columns.contains(**column))
+        .copied()
+        .collect::<Vec<_>>();
+
+    match available.as_slice() {
+        [] => "NULL".to_string(),
+        [column] => (*column).to_string(),
+        _ => format!("COALESCE({})", available.join(", ")),
+    }
 }
 
 impl Database {
@@ -134,8 +277,35 @@ impl Database {
                     UNIQUE(hour_bucket, character)
                 );
                 CREATE INDEX IF NOT EXISTS idx_char_stats_bucket ON character_stats(hour_bucket);
+
+                CREATE TABLE IF NOT EXISTS web_history (
+                    id                         TEXT PRIMARY KEY,
+                    url                        TEXT    NOT NULL,
+                    normalized_url             TEXT,
+                    host                       TEXT    NOT NULL,
+                    title                      TEXT,
+                    visited_at_ms              INTEGER NOT NULL,
+                    date                       TEXT,
+                    time                       TEXT,
+                    date_time                  TEXT,
+                    timezone                   TEXT,
+                    incognito                  INTEGER NOT NULL DEFAULT 0,
+                    context                    TEXT,
+                    screenshot_data_uri        TEXT,
+                    screenshot_mime            TEXT,
+                    screenshot_captured_at_ms  INTEGER,
+                    screenshot_status          TEXT,
+                    tab_id                     INTEGER,
+                    window_id                  INTEGER,
+                    source_event               TEXT,
+                    created_at_ms              INTEGER,
+                    updated_at_ms              INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_web_history_visited_at ON web_history(visited_at_ms);
+                CREATE INDEX IF NOT EXISTS idx_web_history_host ON web_history(host);
                 ",
             )?;
+            ensure_web_history_compat(conn)?;
 
             // Migration: add controller_buttons column if it doesn't exist (for existing DBs)
             let _ = conn.execute(
@@ -150,6 +320,186 @@ impl Database {
         Ok(Self {
             conn: Arc::new(conn),
         })
+    }
+
+    /// Upsert website visits sent by the browser extension.
+    pub async fn upsert_web_history(
+        &self,
+        visits: Vec<WebHistoryVisit>,
+    ) -> Result<usize, tokio_rusqlite::Error> {
+        self.conn
+            .call(move |conn| {
+                let mut inserted = 0usize;
+                let mut stmt = conn.prepare(
+                    "INSERT OR REPLACE INTO web_history (
+                        id, url, normalized_url, host, title, visited_at_ms, date, time, date_time,
+                        timezone, incognito, context, screenshot_data_uri, screenshot_mime,
+                        screenshot_captured_at_ms, tab_id, window_id, screenshot_status,
+                        source_event, created_at_ms, updated_at_ms
+                     )
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                )?;
+
+                for visit in visits {
+                    if visit.url.trim().is_empty() {
+                        continue;
+                    }
+
+                    let visited_at_ms = visit.visited_at_ms.unwrap_or_else(|| Utc::now().timestamp_millis());
+                    let id = visit.id.unwrap_or_else(|| {
+                        format!(
+                            "{}:{}",
+                            visited_at_ms,
+                            visit.url
+                        )
+                    });
+                    let host = visit
+                        .host
+                        .filter(|host| !host.trim().is_empty())
+                        .unwrap_or_else(|| host_from_url(&visit.url));
+
+                    if host.is_empty() {
+                        continue;
+                    }
+
+                    let incognito = if visit.incognito.unwrap_or(false) { 1 } else { 0 };
+                    let now = Utc::now().timestamp_millis();
+                    let created_at_ms = visit.created_at_ms.unwrap_or(now);
+                    let updated_at_ms = visit.updated_at_ms.unwrap_or(now);
+
+                    stmt.execute(params![
+                        id,
+                        visit.url,
+                        visit.normalized_url,
+                        host,
+                        visit.title,
+                        visited_at_ms,
+                        visit.date,
+                        visit.time,
+                        visit.date_time,
+                        visit.timezone,
+                        incognito,
+                        visit.context,
+                        visit.screenshot_data_uri,
+                        visit.screenshot_mime,
+                        visit.screenshot_captured_at_ms,
+                        visit.tab_id,
+                        visit.window_id,
+                        visit.screenshot_status,
+                        visit.source_event,
+                        created_at_ms,
+                        updated_at_ms,
+                    ])?;
+                    inserted += 1;
+                }
+
+                Ok(inserted)
+            })
+            .await
+    }
+
+    /// Query the most visited website for the requested time range.
+    pub async fn query_most_visited_website(
+        &self,
+        hours_back: u32,
+    ) -> Result<Option<MostVisitedWebsite>, tokio_rusqlite::Error> {
+        self.conn
+            .call(move |conn| {
+                ensure_web_history_compat(conn)?;
+                let columns = table_columns(conn, "web_history")?;
+                let timestamp_expr = coalesce_existing_column(
+                    &columns,
+                    &[
+                        "visited_at_ms",
+                        "visitedAtMs",
+                        "timestamp",
+                        "created_at_ms",
+                        "createdAtMs",
+                    ],
+                );
+
+                let cutoff = Utc::now() - chrono::Duration::hours(hours_back as i64);
+                let cutoff_ms = cutoff.timestamp_millis();
+
+                let sql = format!(
+                    "SELECT host, url, {timestamp_expr} as visit_ts FROM web_history WHERE {timestamp_expr} IS NOT NULL"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                })?;
+
+                let mut counts: HashMap<String, i64> = HashMap::new();
+                for row in rows {
+                    let (host, url, timestamp) = row?;
+                    let Some(timestamp) = timestamp else {
+                        continue;
+                    };
+
+                    if normalize_timestamp_ms(timestamp) < cutoff_ms {
+                        continue;
+                    }
+
+                    let source_host = host
+                        .filter(|host| !host.trim().is_empty())
+                        .or_else(|| url.map(|url| host_from_url(&url)))
+                        .unwrap_or_default();
+                    let host = display_host(&source_host);
+                    if host.is_empty() {
+                        continue;
+                    }
+
+                    *counts.entry(host).or_insert(0) += 1;
+                }
+
+                Ok(counts
+                    .into_iter()
+                    .max_by(|(left_host, left_count), (right_host, right_count)| {
+                        left_count
+                            .cmp(right_count)
+                            .then_with(|| right_host.cmp(left_host))
+                    })
+                    .map(|(host, visits)| MostVisitedWebsite { host, visits }))
+            })
+            .await
+    }
+
+    /// Query local web history ingestion status.
+    pub async fn query_web_history_status(&self) -> Result<WebHistoryStatus, tokio_rusqlite::Error> {
+        self.conn
+            .call(move |conn| {
+                ensure_web_history_compat(conn)?;
+                let columns = table_columns(conn, "web_history")?;
+                let timestamp_expr = coalesce_existing_column(
+                    &columns,
+                    &[
+                        "visited_at_ms",
+                        "visitedAtMs",
+                        "timestamp",
+                        "created_at_ms",
+                        "createdAtMs",
+                    ],
+                );
+
+                let total_visits: i64 =
+                    conn.query_row("SELECT COUNT(*) FROM web_history", [], |row| row.get(0))?;
+                let latest_visit_at_ms: Option<i64> = conn.query_row(
+                    &format!("SELECT MAX({timestamp_expr}) FROM web_history"),
+                    [],
+                    |row| row.get::<_, Option<i64>>(0),
+                )?;
+
+                Ok(WebHistoryStatus {
+                    api_connected: true,
+                    total_visits,
+                    latest_visit_at_ms: latest_visit_at_ms.map(normalize_timestamp_ms),
+                })
+            })
+            .await
     }
 
     /// Insert a raw input event (key, left_click, right_click, middle_click).
@@ -292,7 +642,6 @@ impl Database {
             .await
     }
 
-
     /// Query app distribution for the past N days.
     pub async fn query_app_distribution(
         &self,
@@ -325,8 +674,7 @@ impl Database {
                 let result: Vec<AppShare> = rows
                     .into_iter()
                     .map(|(app_name, category, seconds)| {
-                        let percentage =
-                            ((seconds as f64 / total) * 10000.0).round() / 100.0;
+                        let percentage = ((seconds as f64 / total) * 10000.0).round() / 100.0;
                         AppShare {
                             app_name,
                             category,
@@ -544,4 +892,3 @@ impl Database {
             .await
     }
 }
-

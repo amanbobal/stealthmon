@@ -40,6 +40,11 @@ button:hover {
   background: #11191c;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 input,
 select {
   width: 100%;
@@ -59,6 +64,44 @@ h1 {
 p {
   margin: 0.25rem 0 0;
   color: #556066;
+}
+
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+  border: 1px solid #cfd4d0;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  color: #556066;
+  font-size: 0.78rem;
+}
+
+.sync-status::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #9aa3a7;
+}
+
+.sync-status.connected {
+  border-color: #b6d9c5;
+  color: #21643b;
+}
+
+.sync-status.connected::before {
+  background: #2ea44f;
+}
+
+.sync-status.disconnected {
+  border-color: #e6b8b8;
+  color: #8b2d2d;
+}
+
+.sync-status.disconnected::before {
+  background: #d73a49;
 }
 
 .popup {
@@ -114,6 +157,15 @@ p {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .filters {
@@ -248,8 +300,23 @@ code,
   p,
   code,
   .url,
-  .status {
+  .status,
+  .sync-status {
     color: #aab3ad;
+  }
+
+  .sync-status {
+    border-color: #4b565b;
+  }
+
+  .sync-status.connected {
+    border-color: #315f42;
+    color: #8ee0a5;
+  }
+
+  .sync-status.disconnected {
+    border-color: #754147;
+    color: #ff9aa2;
   }
 
   input,

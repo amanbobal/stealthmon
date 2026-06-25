@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $package = $metadata.packages | Where-Object { $_.name -eq "stealthmon" } | Select-Object -First 1
+          if (-not $package) { throw "Package stealthmon not found" }
+          "VERSION=$($package.version)" >> $env:GITHUB_ENV
+          "RELEASE_TAG=v$($package.version)" >> $env:GITHUB_ENV
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/stealthmon.exe dist/stealthmon-windows-x64.exe -Force
+          $hash = Get-FileHash dist/stealthmon-windows-x64.exe -Algorithm SHA256
+          "$($hash.Hash.ToLower())  stealthmon-windows-x64.exe" | Set-Content dist/stealthmon-windows-x64.exe.sha256
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: StealthMon ${{ env.VERSION }}
+          body: |
+            Automated Windows release for StealthMon ${{ env.VERSION }}.
+
+            The in-app updater downloads `stealthmon-windows-x64.exe`.
+          files: |
+            dist/stealthmon-windows-x64.exe
+            dist/stealthmon-windows-x64.exe.sha256
+          make_latest: true
