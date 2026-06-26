@@ -10,8 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
 /// Start the axum HTTP server on 127.0.0.1:9521.
-pub async fn start_server(db: Database, data_dir: PathBuf, cancel: CancellationToken) {
-    let updater = UpdateManager::new(data_dir);
+pub async fn start_server(db: Database, updater: UpdateManager, cancel: CancellationToken) {
     let updater_task = updater.clone();
     let cancel_updates = cancel.clone();
     tokio::spawn(async move {

@@ -1,6 +1,6 @@
 [package]
 name = "stealthmon"
-version = "0.3.33"
+version = "0.3.9"
 edition = "2021"
 description = "A silent background activity monitor for Windows with a web dashboard"
 

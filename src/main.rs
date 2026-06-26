@@ -6,6 +6,7 @@ mod server;
 mod updater;
 
 use db::Database;
+use crate::updater::UpdateManager;
 use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 use tray_icon::{
@@ -149,13 +150,15 @@ fn main() {
         tracing::info!("Window collector task ended");
     });
 
-    // Spawn HTTP server (with panic catching)
+    // Create UpdateManager and spawn HTTP server (with panic catching)
+    let updater = UpdateManager::new(data_dir.clone());
     let db_server = db.clone();
     let cancel_server = cancel.clone();
     let data_dir_server = data_dir.clone();
+    let updater_server = updater.clone();
     runtime.spawn(async move {
         tracing::info!("HTTP server task starting");
-        server::start_server(db_server, data_dir_server, cancel_server).await;
+        server::start_server(db_server, updater_server, cancel_server).await;
         tracing::info!("HTTP server task ended");
     });
 
@@ -168,14 +171,17 @@ fn main() {
 
     let menu = Menu::new();
     let open_dashboard = MenuItem::new("Open Dashboard", true, None);
+    let check_updates = MenuItem::new("Check for updates", true, None);
     let separator = PredefinedMenuItem::separator();
     let quit_item = MenuItem::new("Quit", true, None);
 
     menu.append(&open_dashboard).ok();
+    menu.append(&check_updates).ok();
     menu.append(&separator).ok();
     menu.append(&quit_item).ok();
 
     let open_id = open_dashboard.id().clone();
+    let check_updates_id = check_updates.id().clone();
     let quit_id = quit_item.id().clone();
 
     let _tray_icon = TrayIconBuilder::new()
@@ -191,12 +197,33 @@ fn main() {
     // Spawn background thread to poll menu events
     std::thread::spawn(move || {
         loop {
-            if let Ok(event) = menu_rx.try_recv() {
+                if let Ok(event) = menu_rx.try_recv() {
                 if event.id == open_id {
                     tracing::info!("Opening dashboard in browser");
                     if let Err(e) = open::that("http://localhost:9521") {
                         tracing::error!("Failed to open browser: {}", e);
                     }
+                } else if event.id == check_updates_id {
+                    tracing::info!("Manual update check requested from tray menu");
+                    // Spawn a blocking task to run the async check
+                    let updater = updater.clone();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+                        let status = rt.block_on(async { updater.check_for_updates().await });
+                        if status.update_available {
+                            use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_YESNO};
+                            let title: Vec<u16> = "StealthMon Update Available\0".encode_utf16().collect();
+                            let msg_text = format!("New version {} is available. Install now?", status.latest_version.unwrap_or_default());
+                            let msg: Vec<u16> = format!("{}\0", msg_text).encode_utf16().collect();
+                            unsafe {
+                                let res = MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONINFORMATION);
+                                const IDYES: i32 = 6;
+                                if res == IDYES {
+                                    let _ = rt.block_on(async { updater.install_update().await });
+                                }
+                            }
+                        }
+                    });
                 } else if event.id == quit_id {
                     tracing::info!("Quit requested from tray menu");
                     cancel.cancel();

@@ -131,11 +131,40 @@ fn display_host(host: &str) -> String {
     host.strip_prefix("www.").unwrap_or(&host).to_string()
 }
 
+fn should_ignore_web_history_host(host: &str) -> bool {
+    let host = host.trim().trim_end_matches('.').to_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+
+    let host_without_port = host.split(':').next().unwrap_or(&host);
+    matches!(
+        host_without_port,
+        "localhost"
+            | "127.0.0.1"
+            | "::1"
+            | "0.0.0.0"
+            | "[::1]"
+    ) || host_without_port.ends_with(".localhost")
+}
+
 fn normalize_timestamp_ms(timestamp: i64) -> i64 {
     if timestamp > 0 && timestamp < 100_000_000_000 {
         timestamp * 1000
     } else {
         timestamp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_ignore_web_history_host;
+
+    #[test]
+    fn ignores_localhost_hosts_for_most_visited_search() {
+        assert!(should_ignore_web_history_host("localhost"));
+        assert!(should_ignore_web_history_host("LOCALHOST"));
+        assert!(should_ignore_web_history_host("foo.localhost"));
     }
 }
 
@@ -449,7 +478,7 @@ impl Database {
                         .or_else(|| url.map(|url| host_from_url(&url)))
                         .unwrap_or_default();
                     let host = display_host(&source_host);
-                    if host.is_empty() {
+                    if host.is_empty() || should_ignore_web_history_host(&source_host) {
                         continue;
                     }
 

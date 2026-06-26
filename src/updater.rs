@@ -210,14 +210,42 @@ impl UpdateManager {
 }
 
 pub async fn auto_check_loop(manager: UpdateManager, cancel: tokio_util::sync::CancellationToken) {
-    let _ = manager.check_for_updates().await;
+    // Initial check
+    let status = manager.check_for_updates().await;
+    if status.update_available {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_YESNO};
+        let title: Vec<u16> = "StealthMon Update Available\0".encode_utf16().collect();
+        let msg_text = format!("New version {} is available. Install now?", status.latest_version.unwrap_or_default());
+        let msg: Vec<u16> = format!("{}\0", msg_text).encode_utf16().collect();
+        unsafe {
+            let res = MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONINFORMATION);
+            const IDYES: i32 = 6;
+            if res == IDYES {
+                let _ = manager.install_update().await;
+            }
+        }
+    }
+
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
 
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
             _ = interval.tick() => {
-                let _ = manager.check_for_updates().await;
+                let status = manager.check_for_updates().await;
+                if status.update_available {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_YESNO};
+                    let title: Vec<u16> = "StealthMon Update Available\0".encode_utf16().collect();
+                    let msg_text = format!("New version {} is available. Install now?", status.latest_version.unwrap_or_default());
+                    let msg: Vec<u16> = format!("{}\0", msg_text).encode_utf16().collect();
+                    unsafe {
+                        let res = MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONINFORMATION);
+                        const IDYES: i32 = 6;
+                        if res == IDYES {
+                            let _ = manager.install_update().await;
+                        }
+                    }
+                }
             }
         }
     }
